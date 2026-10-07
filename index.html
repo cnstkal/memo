@@ -155,6 +155,9 @@ async function bulkMove(){
   }catch(e){console.error(e);toast('폴더 이동에 실패했어요');}
 }
 
+async function restoreNote(id){
+  await updateDoc(doc(db,'notes',id),{deletedAt:null,updatedAt:serverTimestamp()});
+}
 function renderList(){
   const filtered=notes.filter(n=>{
     if(n.deletedAt)return false;
@@ -168,7 +171,7 @@ function renderList(){
     <header class="top">
       <div><h1>메모</h1><div class="folder-current">${esc(folderLabel)}</div></div>
       <div class="top-actions">
-        <button class="text-action" id="selectBtn">${selectionMode?'취소':'선택'}</button>
+        <button class="text-action" id="trashBtn" title="휴지통">휴지통</button><button class="text-action" id="selectBtn">${selectionMode?'취소':'선택'}</button>
         <button class="icon" id="newBtn" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
       </div>
     </header>
@@ -193,6 +196,7 @@ function renderList(){
   document.getElementById('newBtn').onclick=createNote;
   document.getElementById('fab')?.addEventListener('click',createNote);
   document.getElementById('selectBtn').onclick=()=>{selectionMode=!selectionMode;selectedIds.clear();renderList()};
+  document.getElementById('trashBtn').onclick=()=>{trashMode=true;selectionMode=false;selectedIds.clear();renderList()};
   document.getElementById('addFolderBtn').onclick=createFolder;
   document.getElementById('deleteFolderBtn')?.addEventListener('click',()=>deleteFolder(currentFolderId));
   document.getElementById('folderSelect').onchange=e=>{currentFolderId=e.target.value;selectedIds.clear();renderList()};

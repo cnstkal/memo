@@ -15,7 +15,7 @@ button{border:0;background:none;color:inherit}
 #app{height:100dvh;height:100svh;display:flex;flex-direction:column;overflow:hidden}
 .screen{height:100%;display:flex;flex-direction:column;min-height:0}
 .top{padding:calc(env(safe-area-inset-top) + 12px) 18px 10px;display:flex;align-items:center;justify-content:space-between;flex:none}
-.top h1{font-size:34px;letter-spacing:-1.5px;margin:0;font-weight:750}
+.top h1{font-size:34px;letter-spacing:-1.5px;margin:0;font-weight:750}.top-actions{display:flex;align-items:center;gap:4px}.text-action{padding:8px 6px;color:#147ef5;font-size:15px}.bulk-bar{margin:0 16px 8px;padding:9px 10px;background:#e4e4e9;border-radius:10px;display:flex;align-items:center;gap:8px;font-size:13px}.bulk-bar span{margin-right:auto}.bulk-bar button{padding:5px 9px;border-radius:7px;background:#fff;font-size:13px}.card{position:relative}.card.selected{background:#e9f2ff}.check-circle{position:absolute;right:14px;top:14px;width:23px;height:23px;border:1.5px solid #999;border-radius:50%;display:grid;place-items:center;font-size:14px}.card.selected .check-circle{background:#147ef5;border-color:#147ef5;color:#fff}
 .icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;cursor:pointer}.icon svg,.fab svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .icon:active{background:#e9e9ec}
 .folder-current{font-size:13px;color:#888;margin-top:2px}.folder-bar{margin:0 16px 8px;display:flex;align-items:center;gap:6px}.folder-bar select,.note-folder-row select{border:0;background:#e4e4e9;border-radius:9px;padding:7px 10px;font-size:14px;outline:0;min-width:0}.folder-bar button{width:36px;height:34px;border-radius:9px;display:grid;place-items:center;background:#e4e4e9}.folder-bar svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.note-folder-row{display:flex;align-items:center;justify-content:space-between;margin:0 0 14px;color:#888;font-size:13px}.note-folder-row select{background:#f0f0f3}.search{margin:0 16px 10px;background:#e4e4e9;border-radius:12px;height:38px;display:flex;align-items:center;padding:0 12px;gap:7px;flex:none}
@@ -90,6 +90,8 @@ let unsubscribe = null;
 let currentNote = null;
 let saveTimer = null;
 let searchTerm = '';
+let selectionMode = false;
+let selectedIds = new Set();
 
 const appEl = document.getElementById('app');
 const loading = document.getElementById('loading');

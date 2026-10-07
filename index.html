@@ -251,6 +251,17 @@ function editorHTML(n){
     if(image){e.preventDefault();uploadBlob(image.getAsFile());}
   });
   setTimeout(()=>document.getElementById('titleInput').focus(),50);
+if(window.visualViewport){
+  const adjustToolbar=()=>{
+    const toolbar=document.getElementById('toolbar');
+    if(!toolbar)return;
+    const keyboardOffset=Math.max(0,window.innerHeight-window.visualViewport.height-window.visualViewport.offsetTop);
+    toolbar.style.bottom=keyboardOffset+'px';
+  };
+  visualViewport.addEventListener('resize',adjustToolbar);
+  visualViewport.addEventListener('scroll',adjustToolbar);
+  setTimeout(adjustToolbar,100);
+}
 }
 
 function createNote(){

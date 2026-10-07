@@ -157,6 +157,7 @@ async function bulkMove(){
 
 function renderList(){
   const filtered=notes.filter(n=>{
+    if(n.deletedAt)return false;
     if(currentFolderId!=='all'&&n.folderId!==currentFolderId)return false;
     if(!searchTerm)return true;
     return (n.title||'').toLowerCase().includes(searchTerm.toLowerCase())||plainText(n.content).toLowerCase().includes(searchTerm.toLowerCase());

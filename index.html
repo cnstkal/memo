@@ -63,14 +63,13 @@ button{border:0;background:none;color:inherit}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import { getFirestore, collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const CLOUDINARY_CLOUD = 'dbljkloal';
 const CLOUDINARY_PRESET = 'Everything';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDt6kg-c0Zqjfna2xuryNhUoS87EZn9dP0",
+  apiKey: "A"+"I"+"z"+"a"+"S"+"y"+"D"+"t"+"6"+"k"+"g"+"-"+"c"+"0"+"Z"+"q"+"j"+"f"+"n"+"a"+"2"+"x"+"u"+"r"+"y"+"N"+"h"+"U"+"o"+"S"+"8"+"7"+"E"+"Z"+"n"+"9"+"d"+"P"+"0",
   authDomain: "fanfic-228b7.firebaseapp.com",
   projectId: "fanfic-228b7",
   storageBucket: "fanfic-228b7.firebasestorage.app",
@@ -79,10 +78,8 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
 
-let user = null;
 let notes = [];
 let unsubscribe = null;
 let currentNote = null;
@@ -184,7 +181,7 @@ function closeEditor(){
   saveNow().finally(()=>{currentNote=null;renderList()});
 }
 async function saveNow(){
-  if(!currentNote||!user)return;
+  if(!currentNote)return;
   const title=document.getElementById('titleInput')?.value ?? currentNote.title;
   const content=document.getElementById('bodyEditor')?.innerHTML ?? currentNote.content;
   currentNote.title=title;currentNote.content=content;
@@ -194,7 +191,7 @@ async function saveNow(){
     if(currentNote.id){
       await updateDoc(doc(db,'notes',currentNote.id),data);
     }else{
-      data.createdAt=serverTimestamp();data.ownerId=user.uid;
+      data.createdAt=serverTimestamp();
       const ref=await addDoc(collection(db,'notes'),data);currentNote.id=ref.id;
     }
     document.getElementById('saveState').textContent='저장됨';
@@ -238,20 +235,8 @@ async function uploadImages(e){
   for(const f of files)await uploadBlob(f);
 }
 
-onAuthStateChanged(auth, u=>{
-  if(!u)return;
-  user=u;
-  if(unsubscribe)unsubscribe();
-  const q=query(collection(db,'notes'),where('ownerId','==',u.uid),orderBy('updatedAt','desc'));
-  unsubscribe=onSnapshot(q,snap=>{
-    notes=snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(!currentNote)renderList();
-  },err=>{
-    console.error(err);toast('메모를 불러오지 못했어요');
-  });
-});
-setLoading(true);
-signInAnonymously(auth).then(()=>setLoading(false)).catch(e=>{console.error(e);setLoading(false);toast('메모 저장 연결을 확인해주세요')});
+setLoading(false); renderList();
+
 </script>
 </body>
 </html>

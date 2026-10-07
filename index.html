@@ -71,6 +71,36 @@ button{border:0;background:none;color:inherit}
 .editor-scroll{padding-top:calc(env(safe-area-inset-top) + 72px)!important}
 .body-editor img[data-uploading]{opacity:.55}
 @media (min-width:700px){.editor-top{max-width:900px;margin:auto}}
+
+input,textarea,select{color:inherit}
+:root[data-theme=dark]{color-scheme:dark;background:#000;color:#f2f2f2}
+[data-theme=dark] html,[data-theme=dark] body,:root[data-theme=dark] body{background:#000;color:#f2f2f2}
+:root[data-theme=dark] html{background:#000}
+[data-theme=dark] .text-action,[data-theme=dark] .back{color:#4da3ff}
+[data-theme=dark] .icon:active{background:#2c2c2e}
+[data-theme=dark] .bulk-bar,[data-theme=dark] .folder-bar select,[data-theme=dark] .folder-bar button,[data-theme=dark] .search,[data-theme=dark] .note-folder-row select{background:#2c2c2e;color:#f2f2f2}
+[data-theme=dark] .bulk-bar button{background:#3a3a3c;color:#f2f2f2}
+[data-theme=dark] .card{background:#1c1c1e;box-shadow:none}
+[data-theme=dark] .card:active{background:#2a2a2c}
+[data-theme=dark] .card.selected{background:#16314f}
+[data-theme=dark] .card.selected .card-title{color:#6db5ff}
+[data-theme=dark] .check-circle{border-color:#777}
+[data-theme=dark] .card-body{color:#aaa}
+[data-theme=dark] .card-meta,[data-theme=dark] .folder-current,[data-theme=dark] .empty,[data-theme=dark] .note-folder-row,[data-theme=dark] .search span{color:#8e8e93}
+[data-theme=dark] .editor,[data-theme=dark] .editor-top{background:#000}
+[data-theme=dark] .editor-top{border-bottom-color:#222}
+[data-theme=dark] .editor-actions button:active{background:#2c2c2e}
+[data-theme=dark] .title-input,[data-theme=dark] .body-editor{color:#f2f2f2}
+[data-theme=dark] .body-editor:empty:before,[data-theme=dark] ::placeholder{color:#666}
+[data-theme=dark] .body-editor{caret-color:#4da3ff}
+[data-theme=dark] .save-state{color:#777}
+[data-theme=dark] .toolbar{background:#1c1c1eef;border-top-color:#333}
+[data-theme=dark] .toolbar button,[data-theme=dark] .file-label{color:#ddd}
+[data-theme=dark] .toolbar button:active,[data-theme=dark] .file-label:active{background:#3a3a3c}
+[data-theme=dark] .loading{background:#0008}
+[data-theme=dark] .spinner{border-color:#444;border-top-color:#4da3ff}
+[data-theme=dark] .toast{background:#3a3a3c}
+@media (min-width:700px){[data-theme=dark] body{background:#000}[data-theme=dark] .screen{background:#000}}
 </style>
 </head>
 <body>
@@ -100,6 +130,15 @@ let currentFolderId='all',currentNote=null,saveTimer=null,searchTerm='';
 let selectionMode=false,selectedIds=new Set(),editorOpen=false,trashMode=false;
 let savedRange=null,menuImg=null;
 
+function getTheme(){
+  let t=null;try{t=localStorage.getItem('memoTheme')}catch{}
+  return t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+}
+function applyTheme(t){
+  document.documentElement.dataset.theme=t;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content',t==='dark'?'#000000':'#f8f8fa');
+}
+applyTheme(getTheme());
 const appEl=document.getElementById('app');
 const loading=document.getElementById('loading');
 const toastEl=document.getElementById('toast');
@@ -225,6 +264,7 @@ function renderList(){
     <header class="top">
       <div><h1>메모</h1><div class="folder-current">${esc(folderLabel)}</div></div>
       <div class="top-actions">
+        <button type="button" class="text-action" id="themeBtn" aria-label="다크 모드">${document.documentElement.dataset.theme==='dark'?'☀️':'🌙'}</button>
         <button type="button" class="text-action" id="trashBtn">${trashMode?'목록':'휴지통'}</button>
         ${trashMode?'':`<button type="button" class="text-action" id="selectBtn">${selectionMode?'취소':'선택'}</button>`}
         <button type="button" class="icon" id="newBtn" aria-label="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
@@ -247,6 +287,11 @@ appEl.addEventListener('click',e=>{
   const btn=e.target.closest('button,.card');
   if(!btn||!appEl.contains(btn))return;
   const id=btn.id;
+  if(id==='themeBtn'){
+    const t=document.documentElement.dataset.theme==='dark'?'light':'dark';
+    applyTheme(t);try{localStorage.setItem('memoTheme',t)}catch{}
+    renderList();return;
+  }
   if(id==='newBtn'||id==='fab'){createNote();return}
   if(id==='selectBtn'){selectionMode=!selectionMode;selectedIds.clear();renderList();return}
   if(id==='trashBtn'){trashMode=!trashMode;selectionMode=trashMode;selectedIds.clear();searchTerm='';renderList();return}

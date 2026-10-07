@@ -484,9 +484,9 @@ function insertImage(url,uploading){
   if(c.nodeType===3&&o===0)prev=c.previousSibling;
   else if(c.nodeType===1)prev=c.childNodes[o-1]||null;
   if(c.nodeType===3&&o>0&&!c.textContent.slice(0,o).trim())prev=c.previousSibling;
-  if(prev?.tagName==='IMG'&&prev.classList.contains('small'))img.classList.add('small');
+  img.classList.add('small');   // 기본은 작게
   range.insertNode(img);
-  if(!img.nextSibling&&!img.classList.contains('small'))body.appendChild(document.createElement('br'));
+  if(!img.nextSibling)body.appendChild(document.createElement('br'));
   const r=document.createRange();r.setStartAfter(img);r.collapse(true);
   savedRange=r;
   const sel=getSelection();sel.removeAllRanges();sel.addRange(r);
@@ -541,7 +541,7 @@ async function processImage(img,source,noteId){
       // 업로드 중에 목록으로 나간 경우: 해당 메모 끝에 사진 추가
       const n=notes.find(x=>x.id===noteId);
       if(n){
-        n.content=(n.content||'')+`<img src="${url}" alt="사진"><br>`;n.images=[...(n.images||[]),url];
+        n.content=(n.content||'')+`<img class="small" src="${url}" alt="사진"><br>`;n.images=[...(n.images||[]),url];
         await setDoc(doc(db,'notes',noteId),{content:n.content,images:n.images,updatedAt:serverTimestamp()},{merge:true});
         if(!editorOpen)renderList();
       }

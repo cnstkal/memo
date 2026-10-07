@@ -281,10 +281,22 @@ async function uploadImages(e){
 }
 
 setLoading(false);
-const folderUnsub=onSnapshot(query(collection(db,'folders'),orderBy('createdAt','asc')),snap=>{
+
+onSnapshot(query(collection(db,'notes'),orderBy('updatedAt','desc')),snap=>{
+  notes=snap.docs.map(d=>({id:d.id,...d.data()}));
+  renderList();
+},err=>{
+  console.error('notes listener:',err);
+  toast('메모 목록을 불러오지 못했어요');
+});
+
+onSnapshot(query(collection(db,'folders'),orderBy('createdAt','asc')),snap=>{
   folders=snap.docs.map(d=>({id:d.id,...d.data()}));
   renderList();
+},err=>{
+  console.error('folders listener:',err);
 });
+
 renderList();
 
 </script>

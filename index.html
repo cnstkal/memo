@@ -227,14 +227,19 @@ async function saveNow(){
   currentNote.title=title;currentNote.content=content;
   const data={title,content,pinned:!!currentNote.pinned,images:currentNote.images||[],folderId:currentNote.folderId||null,updatedAt:serverTimestamp()};
   try{
-    document.getElementById('saveState').textContent='저장 중…';
+    const state=document.getElementById('saveState');
+    if(state)state.textContent='저장 중…';
     if(currentNote.id){
       await updateDoc(doc(db,'notes',currentNote.id),data);
+      const i=notes.findIndex(n=>n.id===currentNote.id);
+      if(i>=0)notes[i]={...notes[i],title,content,pinned:!!currentNote.pinned,images:currentNote.images||[],folderId:currentNote.folderId||null,updatedAt:new Date()};
     }else{
       data.createdAt=serverTimestamp();
-      const ref=await addDoc(collection(db,'notes'),data);currentNote.id=ref.id;
+      const ref=await addDoc(collection(db,'notes'),data);
+      currentNote.id=ref.id;
+      notes.unshift({id:ref.id,title,content,pinned:!!currentNote.pinned,images:currentNote.images||[],folderId:currentNote.folderId||null,createdAt:new Date(),updatedAt:new Date()});
     }
-    document.getElementById('saveState').textContent='저장됨';
+    if(state)state.textContent='저장됨';
   }catch(e){console.error(e);toast('저장에 실패했어요');}
 }
 function scheduleSave(){

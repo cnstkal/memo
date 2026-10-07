@@ -169,7 +169,13 @@ function dateText(ts){
   if(d.toDateString()===now.toDateString())return d.toLocaleTimeString('ko-KR',{hour:'numeric',minute:'2-digit'});
   return d.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'});
 }
-function titleFor(n){return n.title?.trim()||plainText(n.content).slice(0,35)||'새로운 메모'}
+function firstLine(html=''){
+  const t=String(html).replace(/<\/(div|p|li|h[1-6])>|<br\s*\/?>/gi,'\n').replace(/<[^>]*>/g,'');
+  const d=document.createElement('textarea');d.innerHTML=t;   // 엔티티 풀기
+  const line=d.value.split('\n').map(x=>x.replace(/[\u200b\u00a0]/g,' ').trim()).find(Boolean);
+  return (line||'').slice(0,100);
+}
+function titleFor(n){return n.title?.trim()||firstLine(n.content)||(n.images?.length?'사진':'새로운 메모')}
 function folderName(id){return folders.find(f=>f.id===id)?.name||'기본 폴더'}
 
 /* ---------- 폴더 ---------- */
@@ -352,8 +358,7 @@ function editorHTML(n){
     </header>
     <section class="editor-scroll" id="editorScroll">
       <div class="note-folder-row"><span>폴더</span><select id="noteFolderSelect"><option value="none">기본 폴더</option>${folders.map(f=>`<option value="${f.id}" ${n.folderId===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select></div>
-      <input id="titleInput" class="title-input" value="${esc(n.title||'')}" placeholder="제목" autocomplete="off" enterkeyhint="next">
-      <div id="bodyEditor" class="body-editor" contenteditable="true" spellcheck="true" data-placeholder="내용을 입력하세요.">${n.content||''}</div>
+      <div id="bodyEditor" class="body-editor" contenteditable="true" spellcheck="true" data-placeholder="첫 줄이 제목이 돼요.">${n.content||''}</div>
     </section>
     <nav class="toolbar" id="toolbar" aria-label="편집 도구">
       <button id="boldBtn" aria-label="굵게"><svg viewBox="0 0 24 24"><path d="M7 5h6a4 4 0 0 1 1.7 7.62A4 4 0 0 1 13 20H7V5Zm3 3v4h3a2 2 0 1 0 0-4h-3Zm0 7v2h3a2 2 0 1 0 0-2h-3Z"/></svg></button>
@@ -368,9 +373,13 @@ function editorHTML(n){
   $('pinBtn').onclick=togglePin;
   $('deleteBtn').onclick=removeCurrent;
   $('noteFolderSelect').onchange=e=>{currentNote.folderId=e.target.value==='none'?null:e.target.value;scheduleSave()};
-  $('titleInput').oninput=scheduleSave;
   const body=$('bodyEditor');
-  body.oninput=scheduleSave;
+  normalizeLines(body);
+  let composing=false;
+  body.addEventListener('compositionstart',()=>{composing=true});
+  body.addEventListener('compositionend',()=>{composing=false;normalizeLines(body);scheduleSave()});
+  body.addEventListener('beforeinput',e=>guardImageLine(body,e));
+  body.oninput=e=>{if(!composing&&!e.isComposing)normalizeLines(body);scheduleSave()};
   const tb=$('toolbar');
   tb.addEventListener('mousedown',e=>{if(!e.target.closest('label'))e.preventDefault()});
   $('boldBtn').onclick=()=>{body.focus();document.execCommand('bold')};
@@ -379,7 +388,7 @@ function editorHTML(n){
   $('photoInput').onchange=uploadImages;
   body.addEventListener('paste',handlePaste);
   setupImageLongPress(body);
-  if(!n.id||n.isNew)setTimeout(()=>$('titleInput')?.focus(),50);
+  if(!n.id||n.isNew)setTimeout(()=>$('bodyEditor')?.focus(),50);
   adjustToolbar();
 }
 function adjustToolbar(){
@@ -401,6 +410,91 @@ document.addEventListener('selectionchange',()=>{
 function restoreRange(){
   const body=document.getElementById('bodyEditor');if(!body||!savedRange)return;
   const sel=getSelection();sel.removeAllRanges();sel.addRange(savedRange);
+}
+
+/* ---------- 사진과 글자는 한 줄에 같이 있지 못하게 ---------- */
+function normalizeLines(body){
+  if(!body)return;
+  const sel=getSelection();let an=null,ao=0;
+  if(sel&&sel.rangeCount&&body.contains(sel.anchorNode)){an=sel.anchorNode;ao=sel.anchorOffset}
+  const isImg=c=>c.nodeType===1&&c.tagName==='IMG';
+  const isBlank=c=>(c.nodeType===3&&!c.nodeValue.replace(/[\u200b\s]/g,''))||(c.nodeType===1&&c.tagName==='BR');
+  const mixed=el=>{
+    let img=false,oth=false;
+    for(const c of el.childNodes){
+      if(isImg(c))img=true;
+      else if(isBlank(c))continue;
+      else if(c.nodeType===1&&c.tagName==='DIV'&&el===body)continue; // 이미 줄로 나뉜 div는 그대로
+      else oth=true;
+    }
+    return img&&oth;
+  };
+  const split=el=>{
+    const runs=[];let cur=null;
+    for(const c of [...el.childNodes]){
+      const kind=isImg(c)?'img':(isBlank(c)&&cur?cur.kind:'txt');
+      if(!cur||cur.kind!==kind){cur={kind,nodes:[]};runs.push(cur)}
+      cur.nodes.push(c);
+    }
+    return runs.map(r=>{
+      const d=document.createElement('div');
+      r.nodes.forEach(n=>{if(r.kind==='img'&&n.nodeType===1&&n.tagName==='BR')return;d.appendChild(n)});
+      if(!d.childNodes.length)d.innerHTML='<br>';
+      return d;
+    });
+  };
+  let changed=false;
+  if(mixed(body)){
+    // body 바로 아래에 섞여 있는 경우: div 줄로 감싸되 이미 있는 div는 유지
+    const out=[];let buf=[];
+    const flushBuf=()=>{if(!buf.length)return;const tmp=document.createElement('div');buf.forEach(n=>tmp.appendChild(n));out.push(...split(tmp));buf=[]};
+    for(const c of [...body.childNodes]){
+      if(c.nodeType===1&&c.tagName==='DIV'){flushBuf();out.push(c)}else buf.push(c);
+    }
+    flushBuf();
+    body.innerHTML='';out.forEach(d=>body.appendChild(d));changed=true;
+  }
+  for(const el of [...body.querySelectorAll(':scope > div')]){
+    if(mixed(el)){
+      const ds=split(el);ds.forEach(d=>body.insertBefore(d,el));el.remove();changed=true;
+    }
+  }
+  if(changed&&an&&an.isConnected){
+    try{
+      const r=document.createRange();
+      const max=an.nodeType===3?an.nodeValue.length:an.childNodes.length;
+      r.setStart(an,Math.min(ao,max));r.collapse(true);
+      sel.removeAllRanges();sel.addRange(r);
+    }catch{}
+  }
+}
+// 사진 줄에서 글자를 치려고 하면, 사진 아래(또는 위) 새 줄로 커서를 옮김
+function guardImageLine(body,e){
+  if(!/^insert(Text|CompositionText|ReplacementText|FromPaste|FromDrop)$/.test(e.inputType||''))return;
+  const sel=getSelection();if(!sel.rangeCount)return;
+  const r=sel.getRangeAt(0);if(!r.collapsed)return;
+  let line=r.startContainer;
+  if(line===body){
+    const ref=body.childNodes[r.startOffset-1]||body.childNodes[r.startOffset];
+    if(ref&&ref.nodeType===1&&ref.tagName==='IMG')line=ref;else return;
+  }else{
+    while(line&&line.parentNode!==body)line=line.parentNode;
+    if(!line||line.nodeType!==1)return;
+  }
+  const imgs=line.tagName==='IMG'?[line]:[...line.childNodes].filter(c=>c.nodeType===1&&c.tagName==='IMG');
+  if(!imgs.length)return;
+  const hasText=line.tagName!=='IMG'&&[...line.childNodes].some(c=>(c.nodeType===3&&c.nodeValue.replace(/[\u200b\s]/g,''))||(c.nodeType===1&&c.tagName!=='IMG'&&c.tagName!=='BR'));
+  if(hasText)return;   // 글자 줄이면 normalize가 처리
+  // 커서 앞에 사진이 있는지
+  let after=false;
+  for(const im of imgs){
+    const rr=document.createRange();rr.setStartAfter(im);rr.collapse(true);
+    if(r.compareBoundaryPoints(Range.START_TO_START,rr)>=0)after=true;
+  }
+  const nd=document.createElement('div');nd.innerHTML='<br>';
+  if(after)line.parentNode.insertBefore(nd,line.nextSibling);else line.parentNode.insertBefore(nd,line);
+  const nr=document.createRange();nr.setStart(nd,0);nr.collapse(true);
+  sel.removeAllRanges();sel.addRange(nr);
 }
 
 /* ---------- 사진: 길게 눌러 작게/보통 ---------- */
@@ -486,7 +580,9 @@ function insertImage(url,uploading){
   if(c.nodeType===3&&o>0&&!c.textContent.slice(0,o).trim())prev=c.previousSibling;
   img.classList.add('small');   // 기본은 작게
   range.insertNode(img);
-  if(!img.nextSibling)body.appendChild(document.createElement('br'));
+  normalizeLines(body);             // 사진은 글자와 다른 줄에 두기
+  const ln=img.parentNode===body?img:img.parentNode;
+  if(ln&&ln.parentNode===body&&!ln.nextSibling){const d=document.createElement('div');d.innerHTML='<br>';body.appendChild(d)}
   const r=document.createRange();r.setStartAfter(img);r.collapse(true);
   savedRange=r;
   const sel=getSelection();sel.removeAllRanges();sel.addRange(r);
@@ -639,7 +735,10 @@ function createNote(){
 function openNote(id){
   const n=notes.find(x=>x.id===id);if(!n)return;
   editorOpen=true;
-  currentNote={id:n.id,isNew:false,title:n.title||'',content:n.content||'',pinned:!!n.pinned,images:n.images||[],folderId:n.folderId||null};
+  let content=n.content||'';
+  const t=(n.title||'').trim();
+  if(t&&firstLine(content)!==t)content=`<div>${esc(t)}</div>`+content;   // 예전 제목은 첫 줄로 옮김
+  currentNote={id:n.id,isNew:false,title:n.title||'',content,pinned:!!n.pinned,images:n.images||[],folderId:n.folderId||null};
   editorHTML(currentNote);
 }
 function closeEditor(){
@@ -659,10 +758,10 @@ function cleanContent(){
 }
 function saveNow(){
   const n=currentNote;
-  const titleEl=document.getElementById('titleInput'),bodyEl=document.getElementById('bodyEditor');
-  if(!n||!titleEl||!bodyEl)return Promise.resolve();
+  const bodyEl=document.getElementById('bodyEditor');
+  if(!n||!bodyEl)return Promise.resolve();
   clearTimeout(saveTimer);
-  const title=titleEl.value;const{html,images}=cleanContent();
+  const{html,images}=cleanContent();const title=firstLine(html);
   n.title=title;n.content=html;n.images=images;
   if(n.isNew&&!title.trim()&&!plainText(html)&&!images.length)return Promise.resolve(); // 빈 새 메모는 저장 안 함
   if(html.length>900000){toast('메모가 너무 길어서 저장할 수 없어요');const st=document.getElementById('saveState');if(st)st.textContent='저장 실패';return Promise.resolve()}

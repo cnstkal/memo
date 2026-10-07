@@ -172,8 +172,8 @@ function renderList(){
     <header class="top">
       <div><h1>메모</h1><div class="folder-current">${esc(folderLabel)}</div></div>
       <div class="top-actions">
-        <button class="text-action" id="trashBtn" title="휴지통">휴지통</button><button class="text-action" id="selectBtn">${selectionMode?'취소':'선택'}</button>
-        <button class="icon" id="newBtn" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button type="button" class="text-action" id="trashBtn" title="휴지통">휴지통</button><button type="button" class="text-action" id="selectBtn">${selectionMode?'취소':'선택'}</button>
+        <button type="button" class="icon" id="newBtn" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
       </div>
     </header>
     <div class="folder-bar">
@@ -192,24 +192,46 @@ function renderList(){
           <div class="card-meta">${n.pinned?'고정 · ':''}${dateText(n.updatedAt||n.createdAt)}${n.images?.length?' · 사진 '+n.images.length:''}</div>
         </article>`).join(''):'<div class="empty">아직 메모가 없어요.<br>오른쪽 위 +를 눌러 새 메모를 작성해보세요.</div>'}
     </section>
-    ${selectionMode?'':`<button class="fab" id="fab" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>`}
+    ${selectionMode?'':`<button type="button" class="fab" id="fab" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>`}
   </main>`;
-  document.getElementById('newBtn').onclick=createNote;
-  document.getElementById('fab')?.addEventListener('click',createNote);
-  document.getElementById('selectBtn').onclick=()=>{selectionMode=!selectionMode;selectedIds.clear();renderList()};
-  document.getElementById('trashBtn').onclick=()=>{trashMode=!trashMode;selectionMode=false;selectedIds.clear();renderList()};
-  document.getElementById('addFolderBtn').onclick=createFolder;
-  document.getElementById('deleteFolderBtn')?.addEventListener('click',()=>deleteFolder(currentFolderId));
-  document.getElementById('folderSelect').onchange=e=>{currentFolderId=e.target.value;selectedIds.clear();renderList()};
-  document.getElementById('searchInput').oninput=e=>{searchTerm=e.target.value;renderList();document.getElementById('searchInput')?.focus()};
-  document.getElementById('moveBtn')?.addEventListener('click',bulkMove);
-  document.getElementById('bulkDeleteBtn')?.addEventListener('click',bulkDelete);
-  document.querySelectorAll('.card').forEach(el=>el.onclick=()=>{
-    if(selectionMode){
-      selectedIds.has(el.dataset.id)?selectedIds.delete(el.dataset.id):selectedIds.add(el.dataset.id);
-      renderList();
-    }else openNote(el.dataset.id);
-  });
+  const bindListEvents=()=>{
+    if(appEl.dataset.eventsBound==='1')return;
+    appEl.dataset.eventsBound='1';
+    appEl.addEventListener('click',e=>{
+      const btn=e.target.closest('button,label,.card');
+      if(!btn||!appEl.contains(btn))return;
+      if(btn.id==='newBtn'||btn.id==='fab'){e.preventDefault();createNote();return;}
+      if(btn.id==='selectBtn'){e.preventDefault();selectionMode=!selectionMode;selectedIds.clear();renderList();return;}
+      if(btn.id==='trashBtn'){e.preventDefault();trashMode=!trashMode;selectionMode=false;selectedIds.clear();renderList();return;}
+      if(btn.id==='addFolderBtn'){e.preventDefault();createFolder();return;}
+      if(btn.id==='deleteFolderBtn'){e.preventDefault();deleteFolder(currentFolderId);return;}
+      if(btn.id==='moveBtn'){e.preventDefault();bulkMove();return;}
+      if(btn.id==='bulkDeleteBtn'){e.preventDefault();bulkDelete();return;}
+      if(btn.classList.contains('card')){
+        const id=btn.dataset.id;
+        if(!id)return;
+        if(selectionMode){
+          selectedIds.has(id)?selectedIds.delete(id):selectedIds.add(id);
+          renderList();
+        }else openNote(id);
+      }
+    });
+    appEl.addEventListener('change',e=>{
+      if(e.target.id==='folderSelect'){
+        currentFolderId=e.target.value;selectedIds.clear();renderList();
+      }
+    });
+    appEl.addEventListener('input',e=>{
+      if(e.target.id==='searchInput'){
+        searchTerm=e.target.value;
+        const pos=e.target.selectionStart;
+        renderList();
+        const input=document.getElementById('searchInput');
+        if(input){input.focus();try{input.setSelectionRange(pos,pos)}catch{}}
+      }
+    });
+  };
+  bindListEvents();
 }
 function editorHTML(n){
   appEl.innerHTML=`

@@ -16,10 +16,10 @@ button{border:0;background:none;color:inherit}
 .screen{height:100%;display:flex;flex-direction:column;min-height:0}
 .top{padding:calc(env(safe-area-inset-top) + 12px) 18px 10px;display:flex;align-items:center;justify-content:space-between;flex:none}
 .top h1{font-size:34px;letter-spacing:-1.5px;margin:0;font-weight:750}
-.icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:25px;cursor:pointer}
+.icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;cursor:pointer}.icon svg,.fab svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .icon:active{background:#e9e9ec}
-.search{margin:0 16px 10px;background:#e4e4e9;border-radius:12px;height:38px;display:flex;align-items:center;padding:0 12px;gap:7px;flex:none}
-.search span{font-size:16px;color:#777}
+.folder-current{font-size:13px;color:#888;margin-top:2px}.folder-bar{margin:0 16px 8px;display:flex;align-items:center;gap:6px}.folder-bar select,.note-folder-row select{border:0;background:#e4e4e9;border-radius:9px;padding:7px 10px;font-size:14px;outline:0;min-width:0}.folder-bar button{width:36px;height:34px;border-radius:9px;display:grid;place-items:center;background:#e4e4e9}.folder-bar svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.note-folder-row{display:flex;align-items:center;justify-content:space-between;margin:0 0 14px;color:#888;font-size:13px}.note-folder-row select{background:#f0f0f3}.search{margin:0 16px 10px;background:#e4e4e9;border-radius:12px;height:38px;display:flex;align-items:center;padding:0 12px;gap:7px;flex:none}
+.search span{display:grid;place-items:center;color:#777}.search span svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .search input{border:0;outline:0;background:transparent;width:100%;font-size:16px;min-width:0}
 .notes{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;flex:1;padding:0 16px 110px}
 .card{background:#fff;border-radius:14px;margin:7px 0;padding:15px 16px;box-shadow:0 1px 2px #00000008;cursor:pointer}
@@ -28,7 +28,7 @@ button{border:0;background:none;color:inherit}
 .card-body{font-size:15px;color:#666;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
 .card-meta{font-size:12px;color:#999;margin-top:9px;display:flex;gap:8px}
 .empty{text-align:center;color:#888;padding:80px 20px;font-size:15px}
-.fab{position:absolute;right:18px;bottom:calc(env(safe-area-inset-bottom) + 18px);width:56px;height:56px;border-radius:50%;background:#ffcc00;display:grid;place-items:center;font-size:31px;box-shadow:0 5px 18px #0002;z-index:10}
+.fab{position:absolute;right:18px;bottom:calc(env(safe-area-inset-bottom) + 18px);width:56px;height:56px;border-radius:50%;background:#ffcc00;display:grid;place-items:center;font-size:31px;color:#171717;box-shadow:0 5px 18px #0002;z-index:10}
 .editor{background:#fff}
 .editor-top{padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #eee;flex:none}
 .back{font-size:17px;color:#147ef5;padding:9px 8px}
@@ -84,6 +84,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 let notes = [];
+let folders = [];
+let currentFolderId = 'all';
 let unsubscribe = null;
 let currentNote = null;
 let saveTimer = null;
@@ -104,32 +106,64 @@ function dateText(ts){
   return d.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'});
 }
 function titleFor(n){return n.title?.trim() || plainText(n.content).slice(0,35) || '새로운 메모'}
+function folderName(id){return folders.find(f=>f.id===id)?.name||'기본 폴더'}
+async function createFolder(){
+  const name=prompt('폴더 이름을 입력하세요.');
+  if(!name?.trim())return;
+  try{
+    const ref=await addDoc(collection(db,'folders'),{name:name.trim(),createdAt:serverTimestamp()});
+    currentFolderId=ref.id;
+    renderList();
+  }catch(e){console.error(e);toast('폴더를 만들지 못했어요');}
+}
+async function deleteFolder(id){
+  if(!id||id==='all')return;
+  const f=folders.find(x=>x.id===id);
+  if(!f)return;
+  if(!confirm(`'${f.name}' 폴더를 삭제할까요? 메모는 삭제되지 않아요.`))return;
+  try{
+    const targets=notes.filter(n=>n.folderId===id);
+    for(const n of targets)await updateDoc(doc(db,'notes',n.id),{folderId:null,updatedAt:serverTimestamp()});
+    await deleteDoc(doc(db,'folders',id));
+    currentFolderId='all';renderList();
+  }catch(e){console.error(e);toast('폴더를 삭제하지 못했어요');}
+}
 
 function renderList(){
   const filtered=notes.filter(n=>{
+    const inFolder=currentFolderId==='all'||n.folderId===currentFolderId;
+    if(!inFolder)return false;
     if(!searchTerm)return true;
     return (n.title||'').toLowerCase().includes(searchTerm.toLowerCase()) || plainText(n.content).toLowerCase().includes(searchTerm.toLowerCase());
   });
+  const folderLabel=currentFolderId==='all'?'모든 메모':folderName(currentFolderId);
   appEl.innerHTML=`
   <main class="screen">
-    <header class="top"><h1>메모</h1><button class="icon" id="newBtn" aria-label="새 메모">＋</button></header>
-    <div class="search"><span>⌕</span><input id="searchInput" value="${esc(searchTerm)}" placeholder="검색" autocomplete="off" inputmode="search"></div>
+    <header class="top"><div><h1>메모</h1><div class="folder-current">${esc(folderLabel)}</div></div><button class="icon" id="newBtn" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></header>
+    <div class="folder-bar">
+      <select id="folderSelect" aria-label="메모 폴더">${`<option value="all" ${currentFolderId==='all'?'selected':''}>모든 메모</option>`}${folders.map(f=>`<option value="${f.id}" ${currentFolderId===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select>
+      <button id="addFolderBtn" aria-label="폴더 추가" title="폴더 추가"><svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v7A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"/><path d="M12 10v5M9.5 12.5h5"/></svg></button>
+      ${currentFolderId!=='all'?'<button id="deleteFolderBtn" aria-label="현재 폴더 삭제" title="현재 폴더 삭제"><svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5h6v2M8 10v7M12 10v7M16 10v7M7 7l1 13h8l1-13"/></svg></button>':''}
+    </div>
+    <div class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4 4"/></svg></span><input id="searchInput" value="${esc(searchTerm)}" placeholder="검색" autocomplete="off" inputmode="search"></div>
     <section class="notes">
       ${filtered.length?filtered.map(n=>`
         <article class="card" data-id="${n.id}">
           <div class="card-title">${esc(titleFor(n))}</div>
           <div class="card-body">${esc(plainText(n.content)||'내용 없음')}</div>
-          <div class="card-meta">${n.pinned?'📌 ':''}${dateText(n.updatedAt||n.createdAt)}${n.images?.length?' · 📷 '+n.images.length:''}</div>
-        </article>`).join(''):'<div class="empty">아직 메모가 없어요.<br>오른쪽 위 ＋를 눌러 새 메모를 작성해보세요.</div>'}
+          <div class="card-meta">${n.pinned?'고정 · ':''}${dateText(n.updatedAt||n.createdAt)}${n.images?.length?' · 사진 '+n.images.length:''}</div>
+        </article>`).join(''):'<div class="empty">아직 메모가 없어요.<br>오른쪽 위 +를 눌러 새 메모를 작성해보세요.</div>'}
     </section>
-    <button class="fab" id="fab" aria-label="새 메모">＋</button>
+    <button class="fab" id="fab" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
   </main>`;
   document.getElementById('newBtn').onclick=createNote;
   document.getElementById('fab').onclick=createNote;
-  document.getElementById('searchInput').oninput=e=>{searchTerm=e.target.value;renderList();document.getElementById('searchInput')?.focus();};
+  document.getElementById('addFolderBtn').onclick=createFolder;
+  document.getElementById('deleteFolderBtn')?.addEventListener('click',()=>deleteFolder(currentFolderId));
+  document.getElementById('folderSelect').onchange=e=>{currentFolderId=e.target.value;renderList()};
+  document.getElementById('searchInput').oninput=e=>{searchTerm=e.target.value;renderList();document.getElementById('searchInput')?.focus()};
   document.querySelectorAll('.card').forEach(el=>el.onclick=()=>openNote(el.dataset.id));
 }
-
 function editorHTML(n){
   appEl.innerHTML=`
   <main class="screen editor">
@@ -142,6 +176,7 @@ function editorHTML(n){
       </div>
     </header>
     <section class="editor-scroll" id="editorScroll">
+      <div class="note-folder-row"><span>폴더</span><select id="noteFolderSelect"><option value="none">기본 폴더</option>${folders.map(f=>`<option value="${f.id}" ${n.folderId===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select></div>
       <input id="titleInput" class="title-input" value="${esc(n.title||'')}" placeholder="제목" autocomplete="off" enterkeyhint="next">
       <div id="bodyEditor" class="body-editor" contenteditable="true" spellcheck="true" data-placeholder="내용을 입력하세요.">${n.content||''}</div>
     </section>
@@ -155,6 +190,8 @@ function editorHTML(n){
   document.getElementById('backBtn').onclick=closeEditor;
   document.getElementById('pinBtn').onclick=togglePin;
   document.getElementById('deleteBtn').onclick=removeCurrent;
+  const folderSelect=document.getElementById('noteFolderSelect');
+  if(folderSelect)folderSelect.onchange=e=>{currentNote.folderId=e.target.value==='none'?null:e.target.value;scheduleSave()};
   document.getElementById('titleInput').oninput=scheduleSave;
   const body=document.getElementById('bodyEditor');
   body.oninput=scheduleSave;
@@ -171,7 +208,7 @@ function editorHTML(n){
 }
 
 function createNote(){
-  currentNote={id:null,title:'',content:'',pinned:false,images:[],createdAt:new Date(),updatedAt:new Date()};
+  currentNote={id:null,title:'',content:'',pinned:false,images:[],folderId:currentFolderId==='all'?null:currentFolderId,createdAt:new Date(),updatedAt:new Date()};
   editorHTML(currentNote);
 }
 function openNote(id){
@@ -188,7 +225,7 @@ async function saveNow(){
   const title=document.getElementById('titleInput')?.value ?? currentNote.title;
   const content=document.getElementById('bodyEditor')?.innerHTML ?? currentNote.content;
   currentNote.title=title;currentNote.content=content;
-  const data={title,content,pinned:!!currentNote.pinned,images:currentNote.images||[],updatedAt:serverTimestamp()};
+  const data={title,content,pinned:!!currentNote.pinned,images:currentNote.images||[],folderId:currentNote.folderId||null,updatedAt:serverTimestamp()};
   try{
     document.getElementById('saveState').textContent='저장 중…';
     if(currentNote.id){
@@ -238,7 +275,12 @@ async function uploadImages(e){
   for(const f of files)await uploadBlob(f);
 }
 
-setLoading(false); renderList();
+setLoading(false);
+const folderUnsub=onSnapshot(query(collection(db,'folders'),orderBy('createdAt','asc')),snap=>{
+  folders=snap.docs.map(d=>({id:d.id,...d.data()}));
+  renderList();
+});
+renderList();
 
 </script>
 </body>

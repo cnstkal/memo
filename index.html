@@ -324,7 +324,7 @@ setLoading(false);
 
 onSnapshot(query(collection(db,'notes'),orderBy('updatedAt','desc')),snap=>{
   notes=snap.docs.map(d=>({id:d.id,...d.data()}));
-  renderList();
+  if(!currentNote) renderList();
 },err=>{
   console.error('notes listener:',err);
   toast('메모 목록을 불러오지 못했어요');

@@ -131,40 +131,78 @@ async function deleteFolder(id){
   }catch(e){console.error(e);toast('폴더를 삭제하지 못했어요');}
 }
 
+async function bulkDelete(){
+  if(!selectedIds.size)return;
+  if(!confirm(selectedIds.size+'개의 메모를 삭제할까요?'))return;
+  try{
+    for(const id of selectedIds) await deleteDoc(doc(db,'notes',id));
+    selectedIds.clear(); selectionMode=false; renderList();
+  }catch(e){console.error(e);toast('삭제에 실패했어요');}
+}
+async function bulkMove(){
+  if(!selectedIds.size)return;
+  const options=[{id:'none',name:'기본 폴더'},...folders];
+  const answer=prompt('이동할 폴더 번호를 입력하세요.\n'+options.map((x,i)=>(i+1)+'. '+x.name).join('\n'));
+  const index=Number(answer)-1;
+  if(!Number.isInteger(index)||!options[index])return;
+  try{
+    for(const id of selectedIds) await updateDoc(doc(db,'notes',id),{
+      folderId:options[index].id==='none'?null:options[index].id,
+      updatedAt:serverTimestamp()
+    });
+    selectedIds.clear(); selectionMode=false; renderList();
+  }catch(e){console.error(e);toast('폴더 이동에 실패했어요');}
+}
+
 function renderList(){
   const filtered=notes.filter(n=>{
-    const inFolder=currentFolderId==='all'||n.folderId===currentFolderId;
-    if(!inFolder)return false;
+    if(currentFolderId!=='all'&&n.folderId!==currentFolderId)return false;
     if(!searchTerm)return true;
-    return (n.title||'').toLowerCase().includes(searchTerm.toLowerCase()) || plainText(n.content).toLowerCase().includes(searchTerm.toLowerCase());
+    return (n.title||'').toLowerCase().includes(searchTerm.toLowerCase())||plainText(n.content).toLowerCase().includes(searchTerm.toLowerCase());
   });
   const folderLabel=currentFolderId==='all'?'모든 메모':folderName(currentFolderId);
   appEl.innerHTML=`
   <main class="screen">
-    <header class="top"><div><h1>메모</h1><div class="folder-current">${esc(folderLabel)}</div></div><button class="icon" id="newBtn" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></header>
+    <header class="top">
+      <div><h1>메모</h1><div class="folder-current">${esc(folderLabel)}</div></div>
+      <div class="top-actions">
+        <button class="text-action" id="selectBtn">${selectionMode?'취소':'선택'}</button>
+        <button class="icon" id="newBtn" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+    </header>
     <div class="folder-bar">
-      <select id="folderSelect" aria-label="메모 폴더">${`<option value="all" ${currentFolderId==='all'?'selected':''}>모든 메모</option>`}${folders.map(f=>`<option value="${f.id}" ${currentFolderId===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select>
+      <select id="folderSelect" aria-label="메모 폴더"><option value="all" ${currentFolderId==='all'?'selected':''}>모든 메모</option>${folders.map(f=>`<option value="${f.id}" ${currentFolderId===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select>
       <button id="addFolderBtn" aria-label="폴더 추가" title="폴더 추가"><svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v7A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"/><path d="M12 10v5M9.5 12.5h5"/></svg></button>
       ${currentFolderId!=='all'?'<button id="deleteFolderBtn" aria-label="현재 폴더 삭제" title="현재 폴더 삭제"><svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5h6v2M8 10v7M12 10v7M16 10v7M7 7l1 13h8l1-13"/></svg></button>':''}
     </div>
     <div class="search"><span aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4 4"/></svg></span><input id="searchInput" value="${esc(searchTerm)}" placeholder="검색" autocomplete="off" inputmode="search"></div>
+    ${selectionMode&&selectedIds.size?`<div class="bulk-bar"><span>${selectedIds.size}개 선택됨</span><button id="moveBtn">폴더 이동</button><button id="bulkDeleteBtn">삭제</button></div>`:''}
     <section class="notes">
       ${filtered.length?filtered.map(n=>`
-        <article class="card" data-id="${n.id}">
+        <article class="card ${selectedIds.has(n.id)?'selected':''}" data-id="${n.id}">
+          ${selectionMode?`<span class="check-circle">${selectedIds.has(n.id)?'✓':''}</span>`:''}
           <div class="card-title">${esc(titleFor(n))}</div>
           <div class="card-body">${esc(plainText(n.content)||'내용 없음')}</div>
           <div class="card-meta">${n.pinned?'고정 · ':''}${dateText(n.updatedAt||n.createdAt)}${n.images?.length?' · 사진 '+n.images.length:''}</div>
         </article>`).join(''):'<div class="empty">아직 메모가 없어요.<br>오른쪽 위 +를 눌러 새 메모를 작성해보세요.</div>'}
     </section>
-    <button class="fab" id="fab" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    ${selectionMode?'':`<button class="fab" id="fab" aria-label="새 메모" title="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>`}
   </main>`;
   document.getElementById('newBtn').onclick=createNote;
-  document.getElementById('fab').onclick=createNote;
+  document.getElementById('fab')?.addEventListener('click',createNote);
+  document.getElementById('selectBtn').onclick=()=>{selectionMode=!selectionMode;selectedIds.clear();renderList()};
   document.getElementById('addFolderBtn').onclick=createFolder;
   document.getElementById('deleteFolderBtn')?.addEventListener('click',()=>deleteFolder(currentFolderId));
-  document.getElementById('folderSelect').onchange=e=>{currentFolderId=e.target.value;renderList()};
+  document.getElementById('folderSelect').onchange=e=>{currentFolderId=e.target.value;selectedIds.clear();renderList()};
   document.getElementById('searchInput').oninput=e=>{searchTerm=e.target.value;renderList();document.getElementById('searchInput')?.focus()};
-  document.querySelectorAll('.card').forEach(el=>el.onclick=()=>openNote(el.dataset.id));
+  document.getElementById('moveBtn')?.addEventListener('click',bulkMove);
+  document.getElementById('bulkDeleteBtn')?.addEventListener('click',bulkDelete);
+  document.querySelectorAll('.card').forEach(el=>el.onclick=()=>{
+    if(selectionMode){
+      selectedIds.has(el.dataset.id)?selectedIds.delete(el.dataset.id):selectedIds.add(el.dataset.id);
+      renderList();
+    }else openNote(el.dataset.id);
+  });
 }
 function editorHTML(n){
   appEl.innerHTML=`

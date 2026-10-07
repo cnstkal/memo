@@ -377,10 +377,7 @@ function editorHTML(n){
   $('italicBtn').onclick=()=>{body.focus();document.execCommand('italic')};
   $('checkBtn').onclick=()=>{body.focus();restoreRange();document.execCommand('insertText',false,'☐ ')};
   $('photoInput').onchange=uploadImages;
-  body.addEventListener('paste',e=>{
-    const image=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));
-    if(image){e.preventDefault();uploadBlob(image.getAsFile())}
-  });
+  body.addEventListener('paste',handlePaste);
   setupImageLongPress(body);
   if(!n.id||n.isNew)setTimeout(()=>$('titleInput')?.focus(),50);
   adjustToolbar();
@@ -497,27 +494,46 @@ function insertImage(url,uploading){
 }
 // 업로드 전에 긴 변 1600px, JPEG로 줄여서 용량/시간 절약
 async function shrink(file){
+  const LIMIT=9.5*1024*1024;   // 업로드 서버 한도(보통 10MB) 아래로 맞춤
   try{
-    if(file.type==='image/gif'||file.size<300*1024)return file;
+    // 작은 파일은 그대로 (GIF도 한도 안이면 움짤 유지)
+    if(file.size<300*1024||(file.type==='image/gif'&&file.size<LIMIT))return file;
     const bmp=await createImageBitmap(file,{imageOrientation:'from-image'});
-    const max=1600,sc=Math.min(1,max/Math.max(bmp.width,bmp.height));
-    const cv=document.createElement('canvas');cv.width=Math.round(bmp.width*sc);cv.height=Math.round(bmp.height*sc);
-    cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);
-    const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.82));
-    return blob&&blob.size<file.size?blob:file;
+    // 용량이 한도 안에 들어올 때까지 크기/화질을 단계적으로 낮춤
+    const steps=[[1600,.82],[1280,.72],[1024,.62],[800,.5],[600,.4]];
+    let best=null;
+    for(const [max,q] of steps){
+      const sc=Math.min(1,max/Math.max(bmp.width,bmp.height));
+      const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(bmp.width*sc));cv.height=Math.max(1,Math.round(bmp.height*sc));
+      cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);
+      const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',q));
+      if(!blob)continue;
+      best=blob;
+      if(blob.size<LIMIT&&(blob.size<file.size||file.size>=LIMIT))break;
+    }
+    bmp.close?.();
+    if(best&&(best.size<file.size||file.size>=LIMIT)){
+      if(file.type==='image/gif')toast('움짤이 너무 커서 정지 사진으로 올렸어요');
+      return best;
+    }
+    return file;
   }catch(e){console.warn('shrink failed',e);return file}
 }
-async function uploadBlob(file){
-  if(!file||!file.type.startsWith('image/')||!currentNote)return;
-  const noteId=currentNote.id;
-  const preview=URL.createObjectURL(file);
-  const img=insertImage(preview,true);   // 바로 화면에 표시 (반투명)
+async function cloudUpload(f){
+  const fd=new FormData();
+  if(typeof f==='string')fd.append('file',f);else fd.append('file',f,'photo.jpg');
+  fd.append('upload_preset',CLOUDINARY_PRESET);fd.append('folder','memo');
+  const res=await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,{method:'POST',body:fd});
+  if(!res.ok)throw new Error(await res.text());
+  return (await res.json()).secure_url;
+}
+// source: File/Blob 또는 이미지 주소(data:, http(s):)
+async function processImage(img,source,noteId){
   try{
-    const small=await shrink(file);
-    const fd=new FormData();fd.append('file',small,'photo.jpg');fd.append('upload_preset',CLOUDINARY_PRESET);fd.append('folder','memo');
-    const res=await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,{method:'POST',body:fd});
-    if(!res.ok)throw new Error(await res.text());
-    const url=(await res.json()).secure_url;
+    let payload=source;
+    if(typeof source==='string'&&source.startsWith('data:'))payload=await (await fetch(source)).blob();
+    if(payload instanceof Blob)payload=await shrink(payload);
+    const url=await cloudUpload(payload);
     if(img&&img.isConnected){
       img.src=url;img.removeAttribute('data-uploading');
       scheduleSave();
@@ -531,13 +547,86 @@ async function uploadBlob(file){
       }
     }
   }catch(e){
-    console.error(e);toast('사진 업로드에 실패했어요');
-    if(img?.isConnected)img.remove();
-  }finally{URL.revokeObjectURL(preview)}
+    console.error(e);
+    if(typeof source==='string'&&/^https?:/i.test(source)&&img?.isConnected){
+      // 업로드는 실패했지만 원본 주소가 있으면 링크로라도 유지
+      img.removeAttribute('data-uploading');scheduleSave();toast('사진을 원본 링크로 넣었어요');
+    }else{
+      toast('사진 업로드에 실패했어요');
+      if(img?.isConnected)img.remove();
+    }
+  }
+}
+async function uploadBlob(file){
+  if(!file||!file.type.startsWith('image/')||!currentNote)return;
+  const noteId=currentNote.id;
+  const preview=URL.createObjectURL(file);
+  const img=insertImage(preview,true);   // 바로 화면에 표시 (반투명)
+  try{await processImage(img,file,noteId)}finally{URL.revokeObjectURL(preview)}
+}
+async function uploadRemote(src){
+  if(!src||!currentNote)return;
+  const noteId=currentNote.id;
+  const img=insertImage(src,true);
+  await processImage(img,src,noteId);
 }
 async function uploadImages(e){
   const files=[...e.target.files];e.target.value='';
   await Promise.all(files.map(f=>uploadBlob(f)));  // 동시에 업로드, 미리보기는 순서대로 삽입
+}
+
+/* ---------- 붙여넣기: 글자는 순수 텍스트로, 이미지는 업로드 ---------- */
+function insertPlainText(text){
+  const body=document.getElementById('bodyEditor');if(!body||!text)return;
+  const lines=text.replace(/\r\n?/g,'\n').split('\n');
+  const html=lines.map(l=>l?`<div>${esc(l)}</div>`:'<div><br></div>').join('');
+  body.focus();restoreRange();
+  let ok=false;
+  try{ok=document.execCommand('insertHTML',false,html)}catch{}
+  if(!ok)try{ok=document.execCommand('insertText',false,text)}catch{}
+}
+function parseHtmlClip(html){
+  // 이미지가 섞인 HTML을 [글자, 이미지, 글자…] 순서로 풀어냄
+  const d=new DOMParser().parseFromString(html,'text/html');
+  const parts=[];let buf='';
+  const flush=()=>{if(buf.trim())parts.push({t:buf.replace(/^\n+|\n+$/g,'')});buf=''};
+  const block=/^(P|DIV|LI|TR|H[1-6]|BLOCKQUOTE|PRE|UL|OL|TABLE|SECTION|ARTICLE|FIGURE)$/;
+  (function walk(n){
+    for(const c of n.childNodes){
+      if(c.nodeType===3)buf+=c.nodeValue.replace(/\s+/g,' ');
+      else if(c.nodeType===1){
+        const tag=c.tagName;
+        if(tag==='STYLE'||tag==='SCRIPT'||tag==='META')continue;
+        if(tag==='IMG'){flush();const src=c.getAttribute('src');if(src)parts.push({img:src});continue}
+        if(tag==='BR'){buf+='\n';continue}
+        walk(c);
+        if(block.test(tag))buf+='\n';
+      }
+    }
+  })(d.body);
+  flush();
+  return parts;
+}
+function handlePaste(e){
+  const cd=e.clipboardData;if(!cd)return;
+  e.preventDefault();               // 원본 서식/base64 이미지가 그대로 들어가 저장이 터지는 걸 방지
+  let files=[...(cd.files||[])].filter(f=>f.type.startsWith('image/'));
+  if(!files.length)files=[...(cd.items||[])].filter(i=>i.kind==='file'&&i.type.startsWith('image/')).map(i=>i.getAsFile()).filter(Boolean);
+  const html=cd.getData('text/html')||'';
+  const text=cd.getData('text/plain')||'';
+  if(files.length){
+    if(text.trim())insertPlainText(text);
+    files.forEach(f=>uploadBlob(f));
+    return;
+  }
+  if(html&&/<img[\s>]/i.test(html)){
+    const parts=parseHtmlClip(html);
+    if(parts.some(p=>p.img)){
+      parts.forEach(p=>{if(p.img)uploadRemote(p.img);else insertPlainText(p.t)});
+      return;
+    }
+  }
+  insertPlainText(text);
 }
 
 /* ---------- 노트 열기/저장 ---------- */
@@ -564,6 +653,7 @@ function cleanContent(){
   const body=document.getElementById('bodyEditor');
   const clone=body.cloneNode(true);
   clone.querySelectorAll('img[data-uploading]').forEach(i=>i.remove());
+  clone.querySelectorAll('img').forEach(i=>{if(/^(data|blob):/i.test(i.getAttribute('src')||''))i.remove()}); // 용량 초과 방지
   clone.querySelectorAll('.sel').forEach(el=>{el.classList.remove('sel');if(!el.getAttribute('class'))el.removeAttribute('class')});
   return{html:clone.innerHTML,images:[...clone.querySelectorAll('img')].map(i=>i.getAttribute('src'))};
 }
@@ -575,6 +665,7 @@ function saveNow(){
   const title=titleEl.value;const{html,images}=cleanContent();
   n.title=title;n.content=html;n.images=images;
   if(n.isNew&&!title.trim()&&!plainText(html)&&!images.length)return Promise.resolve(); // 빈 새 메모는 저장 안 함
+  if(html.length>900000){toast('메모가 너무 길어서 저장할 수 없어요');const st=document.getElementById('saveState');if(st)st.textContent='저장 실패';return Promise.resolve()}
   const data={title,content:html,pinned:!!n.pinned,images,folderId:n.folderId||null,updatedAt:serverTimestamp()};
   if(n.isNew){data.createdAt=serverTimestamp();n.isNew=false}
   // 목록에 즉시 반영

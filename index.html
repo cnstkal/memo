@@ -332,7 +332,7 @@ onSnapshot(query(collection(db,'notes'),orderBy('updatedAt','desc')),snap=>{
 
 onSnapshot(query(collection(db,'folders'),orderBy('createdAt','asc')),snap=>{
   folders=snap.docs.map(d=>({id:d.id,...d.data()}));
-  renderList();
+  if(!currentNote) renderList();
 },err=>{
   console.error('folders listener:',err);
 });

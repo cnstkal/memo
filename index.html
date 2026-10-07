@@ -134,11 +134,11 @@ async function deleteFolder(id){
 
 async function bulkDelete(){
   if(!selectedIds.size)return;
-  if(!confirm(selectedIds.size+'개의 메모를 삭제할까요?'))return;
+  if(!confirm(selectedIds.size+'개의 메모를 휴지통으로 이동할까요?'))return;
   try{
-    for(const id of selectedIds) await deleteDoc(doc(db,'notes',id));
+    for(const id of selectedIds) await updateDoc(doc(db,'notes',id),{deletedAt:serverTimestamp(),updatedAt:serverTimestamp()});
     selectedIds.clear(); selectionMode=false; renderList();
-  }catch(e){console.error(e);toast('삭제에 실패했어요');}
+  }catch(e){console.error(e);toast('휴지통 이동에 실패했어요');}
 }
 async function bulkMove(){
   if(!selectedIds.size)return;

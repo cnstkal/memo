@@ -160,8 +160,8 @@ async function restoreNote(id){
 }
 function renderList(){
   const filtered=notes.filter(n=>{
-    if(n.deletedAt)return false;
-    if(currentFolderId!=='all'&&n.folderId!==currentFolderId)return false;
+    if(trashMode ? !n.deletedAt : !!n.deletedAt)return false;
+    if(!trashMode&&currentFolderId!=='all'&&n.folderId!==currentFolderId)return false;
     if(!searchTerm)return true;
     return (n.title||'').toLowerCase().includes(searchTerm.toLowerCase())||plainText(n.content).toLowerCase().includes(searchTerm.toLowerCase());
   });
@@ -196,7 +196,7 @@ function renderList(){
   document.getElementById('newBtn').onclick=createNote;
   document.getElementById('fab')?.addEventListener('click',createNote);
   document.getElementById('selectBtn').onclick=()=>{selectionMode=!selectionMode;selectedIds.clear();renderList()};
-  document.getElementById('trashBtn').onclick=()=>{trashMode=true;selectionMode=false;selectedIds.clear();renderList()};
+  document.getElementById('trashBtn').onclick=()=>{trashMode=!trashMode;selectionMode=false;selectedIds.clear();renderList()};
   document.getElementById('addFolderBtn').onclick=createFolder;
   document.getElementById('deleteFolderBtn')?.addEventListener('click',()=>deleteFolder(currentFolderId));
   document.getElementById('folderSelect').onchange=e=>{currentFolderId=e.target.value;selectedIds.clear();renderList()};

@@ -59,7 +59,7 @@ button{border:0;background:none;color:inherit}
 @media (min-width:700px){body{background:#e9e9ed}.screen{max-width:700px;margin:auto;background:#f8f8fa}.editor{max-width:900px;width:100%;margin:auto}.toolbar{max-width:900px;margin:auto}}
 
 .body-editor img{display:inline-block;vertical-align:top;width:100%;max-width:100%;height:auto;border-radius:10px;margin:6px 0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none;touch-action:manipulation}
-.body-editor img.small{width:calc(33.333% - 6px);margin:3px}
+.body-editor img.small{width:auto;height:130px;max-width:calc(100% - 6px);margin:3px 6px 3px 0;border-radius:8px}
 .body-editor img.sel{outline:3px solid #147ef5;outline-offset:-3px}
 .img-menu{position:fixed;z-index:300;display:flex;gap:2px;background:#222;border-radius:12px;padding:4px;box-shadow:0 6px 20px #0004}
 .img-menu button{color:#fff;font-size:14px;padding:9px 14px;border-radius:9px}
@@ -101,6 +101,21 @@ input,textarea,select{color:inherit}
 [data-theme=dark] .spinner{border-color:#444;border-top-color:#4da3ff}
 [data-theme=dark] .toast{background:#3a3a3c}
 @media (min-width:700px){[data-theme=dark] body{background:#000}[data-theme=dark] .screen{background:#000}}
+.screen.trash{background:#fff1ef}
+.screen.trash .top h1{color:#d93025}
+.screen.trash .folder-current{color:#d93025;font-weight:600}
+.trash-banner{margin:0 16px 10px;padding:10px 12px;border-radius:12px;background:#ffd9d4;color:#8a1c12;font-size:13px;line-height:1.45;display:flex;align-items:center;gap:10px}
+.trash-banner span{flex:1}
+.trash-banner button{padding:7px 11px;border-radius:9px;background:#d93025;color:#fff;font-size:13px;font-weight:600;white-space:nowrap}
+.bulk-bar .danger-btn{background:#d93025;color:#fff}
+.screen.trash .card{border:1px solid #f3c9c4}
+.screen.trash .card-title{color:#8a1c12}
+:root[data-theme=dark] .screen.trash{background:#1a0b0a}
+:root[data-theme=dark] .screen.trash .top h1,:root[data-theme=dark] .screen.trash .folder-current{color:#ff6b5e}
+:root[data-theme=dark] .trash-banner{background:#3a1512;color:#ffb4ab}
+:root[data-theme=dark] .screen.trash .card{border-color:#4a1f1b}
+:root[data-theme=dark] .screen.trash .card-title{color:#ffb4ab}
+@media (min-width:700px){:root[data-theme=dark] .screen.trash{background:#1a0b0a}}
 </style>
 </head>
 <body>
@@ -203,11 +218,18 @@ async function bulkRestore(){
 }
 async function bulkPurge(){
   if(!selectedIds.size)return;
-  if(!confirm(selectedIds.size+'개의 메모를 영구 삭제할까요? 되돌릴 수 없어요.'))return;
+  if(!confirm('선택한 메모 '+selectedIds.size+'개를 영구 삭제할까요?\n되돌릴 수 없어요.'))return;
   const ids=[...selectedIds];
   notes=notes.filter(n=>!ids.includes(n.id));
   exitSelection();renderList();
   try{await Promise.all(ids.map(id=>deleteDoc(doc(db,'notes',id))))}
+  catch(e){console.error(e);toast('삭제에 실패했어요')}
+}
+async function emptyTrash(){
+  const ids=filteredNotes().map(n=>n.id);if(!ids.length)return;
+  if(!confirm('휴지통의 메모 '+ids.length+'개를 모두 영구 삭제할까요?\n되돌릴 수 없어요.'))return;
+  notes=notes.filter(n=>!ids.includes(n.id));selectedIds.clear();renderList();
+  try{await Promise.all(ids.map(id=>deleteDoc(doc(db,'notes',id))));toast('휴지통을 비웠어요')}
   catch(e){console.error(e);toast('삭제에 실패했어요')}
 }
 async function bulkMove(){
@@ -237,7 +259,7 @@ function filteredNotes(){
 function bulkHTML(){
   if(!selectionMode||!selectedIds.size)return '';
   return trashMode
-    ?`<div class="bulk-bar"><span>${selectedIds.size}개 선택됨</span><button id="restoreBtn">복구</button><button id="purgeBtn">영구 삭제</button></div>`
+    ?`<div class="bulk-bar"><span>${selectedIds.size}개 선택됨</span><button id="restoreBtn">복구</button><button id="purgeBtn" class="danger-btn">삭제 (영구)</button></div>`
     :`<div class="bulk-bar"><span>${selectedIds.size}개 선택됨</span><button id="moveBtn">폴더 이동</button><button id="bulkDeleteBtn">삭제</button></div>`;
 }
 function cardsHTML(){
@@ -258,11 +280,11 @@ function renderNotesOnly(){
 }
 function renderList(){
   appEl.style.height='';
-  const folderLabel=trashMode?'휴지통':(currentFolderId==='all'?'모든 메모':folderName(currentFolderId));
+  const folderLabel=trashMode?'삭제된 메모':(currentFolderId==='all'?'모든 메모':folderName(currentFolderId));
   appEl.innerHTML=`
-  <main class="screen">
+  <main class="screen${trashMode?' trash':''}">
     <header class="top">
-      <div><h1>메모</h1><div class="folder-current">${esc(folderLabel)}</div></div>
+      <div><h1>${trashMode?'🗑 휴지통':'메모'}</h1><div class="folder-current">${esc(folderLabel)}</div></div>
       <div class="top-actions">
         <button type="button" class="text-action" id="themeBtn" aria-label="다크 모드">${document.documentElement.dataset.theme==='dark'?'☀️':'🌙'}</button>
         <button type="button" class="text-action" id="trashBtn">${trashMode?'목록':'휴지통'}</button>
@@ -270,6 +292,7 @@ function renderList(){
         <button type="button" class="icon" id="newBtn" aria-label="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
       </div>
     </header>
+    ${trashMode?`<div class="trash-banner"><span>⚠️ 휴지통이에요. 여기서 삭제하면 <b>영구 삭제</b>되고 되돌릴 수 없어요. 메모를 눌러 선택하면 복구할 수 있어요.</span>${filteredNotes().length?'<button id="emptyTrashBtn">모두 비우기</button>':''}</div>`:''}
     ${trashMode?'':`<div class="folder-bar">
       <select id="folderSelect" aria-label="메모 폴더"><option value="all" ${currentFolderId==='all'?'selected':''}>모든 메모</option>${folders.map(f=>`<option value="${f.id}" ${currentFolderId===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select>
       <button id="addFolderBtn" aria-label="폴더 추가"><svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H10l2 2h5.5A2.5 2.5 0 0 1 20 9.5v7A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-9Z"/><path d="M12 10v5M9.5 12.5h5"/></svg></button>
@@ -301,6 +324,7 @@ appEl.addEventListener('click',e=>{
   if(id==='bulkDeleteBtn'){bulkDelete();return}
   if(id==='restoreBtn'){bulkRestore();return}
   if(id==='purgeBtn'){bulkPurge();return}
+  if(id==='emptyTrashBtn'){emptyTrash();return}
   if(btn.classList.contains('card')){
     const nid=btn.dataset.id;if(!nid)return;
     if(selectionMode){selectedIds.has(nid)?selectedIds.delete(nid):selectedIds.add(nid);renderNotesOnly()}
@@ -410,22 +434,44 @@ function showImgMenu(img){
   if(navigator.vibrate)navigator.vibrate(15);
 }
 function setupImageLongPress(body){
-  let timer=null,sx=0,sy=0;
-  const cancel=()=>{clearTimeout(timer);timer=null};
-  body.addEventListener('pointerdown',e=>{
+  let timer=null,sx=0,sy=0,target=null;
+  const cancel=()=>{clearTimeout(timer);timer=null;target=null};
+  const start=(img,x,y)=>{
+    sx=x;sy=y;target=img;clearTimeout(timer);
+    timer=setTimeout(()=>{
+      timer=null;
+      try{getSelection().removeAllRanges()}catch{}
+      showImgMenu(target);
+    },420);
+  };
+  // 터치(아이폰/안드로이드): pointercancel이 먼저 터져서 타이머가 죽는 문제를 피하려고 touch 이벤트 사용
+  body.addEventListener('touchstart',e=>{
     const img=e.target.closest?.('img');
     if(!img){hideImgMenu();return}
-    sx=e.clientX;sy=e.clientY;cancel();
-    timer=setTimeout(()=>{timer=null;showImgMenu(img)},450);
+    const t=e.touches[0];start(img,t.clientX,t.clientY);
+  },{passive:true});
+  body.addEventListener('touchmove',e=>{
+    if(!timer)return;const t=e.touches[0];
+    if(Math.hypot(t.clientX-sx,t.clientY-sy)>12)cancel();
+  },{passive:true});
+  body.addEventListener('touchend',()=>{
+    const wasLong=!timer&&menuImg;cancel();
+  },{passive:true});
+  // 마우스(PC)
+  body.addEventListener('mousedown',e=>{
+    if(e.sourceCapabilities?.firesTouchEvents)return;
+    const img=e.target.closest?.('img');if(!img){hideImgMenu();return}
+    start(img,e.clientX,e.clientY);
   });
-  body.addEventListener('pointermove',e=>{if(timer&&Math.hypot(e.clientX-sx,e.clientY-sy)>10)cancel()});
-  ['pointerup','pointercancel','pointerleave'].forEach(t=>body.addEventListener(t,cancel));
-  body.addEventListener('contextmenu',e=>{if(e.target.closest('img'))e.preventDefault()});
+  body.addEventListener('mousemove',e=>{if(timer&&Math.hypot(e.clientX-sx,e.clientY-sy)>12)cancel()});
+  body.addEventListener('mouseup',cancel);
+  body.addEventListener('contextmenu',e=>{if(e.target.closest('img')){e.preventDefault();if(!menuImg)showImgMenu(e.target.closest('img'))}});
   body.addEventListener('dragstart',e=>{if(e.target.closest('img'))e.preventDefault()});
   document.getElementById('editorScroll').addEventListener('scroll',()=>{cancel();hideImgMenu()},{passive:true});
 }
 document.addEventListener('pointerdown',e=>{
   if(menuImg&&!e.target.closest('.img-menu')&&!e.target.closest('.body-editor img'))hideImgMenu();
+  if(false&&menuImg&&!e.target.closest('.img-menu')&&!e.target.closest('.body-editor img'))hideImgMenu();
 });
 
 function insertImage(url,uploading){

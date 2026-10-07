@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f8f8fa">
+<title>메모</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f8f8fa;color:#171717;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Pretendard",system-ui,sans-serif}
+button,input,textarea{font:inherit}
+button{border:0;background:none;color:inherit}
+#app{height:100dvh;height:100svh;display:flex;flex-direction:column;overflow:hidden}
+.screen{height:100%;display:flex;flex-direction:column;min-height:0}
+.top{padding:calc(env(safe-area-inset-top) + 12px) 18px 10px;display:flex;align-items:center;justify-content:space-between;flex:none}
+.top h1{font-size:34px;letter-spacing:-1.5px;margin:0;font-weight:750}
+.icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:25px;cursor:pointer}
+.icon:active{background:#e9e9ec}
+.search{margin:0 16px 10px;background:#e4e4e9;border-radius:12px;height:38px;display:flex;align-items:center;padding:0 12px;gap:7px;flex:none}
+.search span{font-size:16px;color:#777}
+.search input{border:0;outline:0;background:transparent;width:100%;font-size:16px;min-width:0}
+.notes{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;flex:1;padding:0 16px 110px}
+.card{background:#fff;border-radius:14px;margin:7px 0;padding:15px 16px;box-shadow:0 1px 2px #00000008;cursor:pointer}
+.card:active{background:#f1f1f3}
+.card-title{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-body{font-size:15px;color:#666;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
+.card-meta{font-size:12px;color:#999;margin-top:9px;display:flex;gap:8px}
+.empty{text-align:center;color:#888;padding:80px 20px;font-size:15px}
+.fab{position:absolute;right:18px;bottom:calc(env(safe-area-inset-bottom) + 18px);width:56px;height:56px;border-radius:50%;background:#ffcc00;display:grid;place-items:center;font-size:31px;box-shadow:0 5px 18px #0002;z-index:10}
+.editor{background:#fff}
+.editor-top{padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #eee;flex:none}
+.back{font-size:17px;color:#147ef5;padding:9px 8px}
+.editor-actions{display:flex;align-items:center;gap:3px}
+.editor-actions button{width:40px;height:40px;border-radius:10px;font-size:20px}
+.editor-actions button:active{background:#eee}
+.save-state{position:absolute;left:50%;transform:translateX(-50%);font-size:11px;color:#999;pointer-events:none}
+.editor-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:20px 18px calc(env(safe-area-inset-bottom) + 90px)}
+.title-input{display:block;width:100%;border:0;outline:0;font-size:27px;font-weight:750;letter-spacing:-1px;margin:0 0 12px;padding:0;background:transparent;resize:none;line-height:1.2}
+.body-editor{width:100%;min-height:55vh;outline:0;border:0;font-size:17px;line-height:1.65;letter-spacing:-.2px;word-break:break-word;caret-color:#147ef5}
+.body-editor:empty:before{content:attr(data-placeholder);color:#aaa}
+.body-editor img{display:block;max-width:100%;height:auto;border-radius:10px;margin:12px 0;user-select:none;-webkit-user-drag:none}
+.body-editor div{min-height:1.65em}
+.toolbar{position:absolute;left:0;right:0;bottom:0;padding:8px 12px calc(env(safe-area-inset-bottom) + 8px);background:#f8f8f8eF;border-top:1px solid #ddd;display:flex;align-items:center;gap:2px;z-index:5;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
+.toolbar button{width:42px;height:40px;border-radius:9px;font-size:19px}
+.toolbar button:active{background:#ddd}
+.file-label{display:grid;place-items:center;cursor:pointer}
+#photoInput{display:none}
+.loading{position:fixed;inset:0;background:#fff8;backdrop-filter:blur(5px);z-index:100;display:none;place-items:center}
+.loading.show{display:grid}
+.spinner{width:34px;height:34px;border:3px solid #ddd;border-top-color:#147ef5;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 85px);transform:translateX(-50%);background:#222;color:#fff;padding:10px 15px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:.2s;z-index:200;white-space:nowrap}
+.toast.show{opacity:1}
+@media (min-width:700px){body{background:#e9e9ed}.screen{max-width:700px;margin:auto;background:#f8f8fa}.editor{max-width:900px;width:100%;margin:auto}.toolbar{max-width:900px;margin:auto}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="loading" id="loading"><div class="spinner"></div></div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import { getFirestore, collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+const CLOUDINARY_CLOUD = 'dbljkloal';
+const CLOUDINARY_PRESET = 'Everything';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDt6kg-c0Zqjfna2uryNhUoS87EZn9dP0",
+  authDomain: "fanfic-228b7.firebaseapp.com",
+  projectId: "fanfic-228b7",
+  storageBucket: "fanfic-228b7.firebasestorage.app",
+  messagingSenderId: "261204619222",
+  appId: "1:261204619222:web:50f74e12ee4b86c8fafe77"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+let user = null;
+let notes = [];
+let unsubscribe = null;
+let currentNote = null;
+let saveTimer = null;
+let searchTerm = '';
+
+const appEl = document.getElementById('app');
+const loading = document.getElementById('loading');
+const toastEl = document.getElementById('toast');
+
+function esc(s=''){return s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');setTimeout(()=>toastEl.classList.remove('show'),1500)}
+function setLoading(v){loading.classList.toggle('show',v)}
+function plainText(html=''){const d=document.createElement('div');d.innerHTML=html;return d.textContent?.replace(/\s+/g,' ').trim()||''}
+function dateText(ts){
+  const d=ts?.toDate?ts.toDate():new Date(ts||Date.now());
+  const now=new Date();
+  if(d.toDateString()===now.toDateString()) return d.toLocaleTimeString('ko-KR',{hour:'numeric',minute:'2-digit'});
+  return d.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'});
+}
+function titleFor(n){return n.title?.trim() || plainText(n.content).slice(0,35) || '새로운 메모'}
+
+function renderList(){
+  const filtered=notes.filter(n=>{
+    if(!searchTerm)return true;
+    return (n.title||'').toLowerCase().includes(searchTerm.toLowerCase()) || plainText(n.content).toLowerCase().includes(searchTerm.toLowerCase());
+  });
+  appEl.innerHTML=`
+  <main class="screen">
+    <header class="top"><h1>메모</h1><button class="icon" id="newBtn" aria-label="새 메모">＋</button></header>
+    <div class="search"><span>⌕</span><input id="searchInput" value="${esc(searchTerm)}" placeholder="검색" autocomplete="off" inputmode="search"></div>
+    <section class="notes">
+      ${filtered.length?filtered.map(n=>`
+        <article class="card" data-id="${n.id}">
+          <div class="card-title">${esc(titleFor(n))}</div>
+          <div class="card-body">${esc(plainText(n.content)||'내용 없음')}</div>
+          <div class="card-meta">${n.pinned?'📌 ':''}${dateText(n.updatedAt||n.createdAt)}${n.images?.length?' · 📷 '+n.images.length:''}</div>
+        </article>`).join(''):'<div class="empty">아직 메모가 없어요.<br>오른쪽 위 ＋를 눌러 새 메모를 작성해보세요.</div>'}
+    </section>
+    <button class="fab" id="fab" aria-label="새 메모">＋</button>
+  </main>`;
+  document.getElementById('newBtn').onclick=createNote;
+  document.getElementById('fab').onclick=createNote;
+  document.getElementById('searchInput').oninput=e=>{searchTerm=e.target.value;renderList();document.getElementById('searchInput')?.focus();};
+  document.querySelectorAll('.card').forEach(el=>el.onclick=()=>openNote(el.dataset.id));
+}
+
+function editorHTML(n){
+  appEl.innerHTML=`
+  <main class="screen editor">
+    <header class="editor-top">
+      <button class="back" id="backBtn">‹ 메모</button>
+      <div class="save-state" id="saveState">저장됨</div>
+      <div class="editor-actions">
+        <button id="pinBtn" title="고정">${n.pinned?'📌':'📍'}</button>
+        <button id="deleteBtn" title="삭제">🗑</button>
+      </div>
+    </header>
+    <section class="editor-scroll" id="editorScroll">
+      <input id="titleInput" class="title-input" value="${esc(n.title||'')}" placeholder="제목" autocomplete="off" enterkeyhint="next">
+      <div id="bodyEditor" class="body-editor" contenteditable="true" spellcheck="true" data-placeholder="내용을 입력하세요.">${n.content||''}</div>
+    </section>
+    <nav class="toolbar" id="toolbar">
+      <button id="boldBtn"><b>B</b></button>
+      <button id="italicBtn"><i>I</i></button>
+      <button id="checkBtn">☑︎</button>
+      <label class="file-label" title="사진"><span style="font-size:22px">▧</span><input id="photoInput" type="file" accept="image/*" multiple></label>
+    </nav>
+  </main>`;
+  document.getElementById('backBtn').onclick=closeEditor;
+  document.getElementById('pinBtn').onclick=togglePin;
+  document.getElementById('deleteBtn').onclick=removeCurrent;
+  document.getElementById('titleInput').oninput=scheduleSave;
+  const body=document.getElementById('bodyEditor');
+  body.oninput=scheduleSave;
+  document.getElementById('boldBtn').onclick=()=>document.execCommand('bold');
+  document.getElementById('italicBtn').onclick=()=>document.execCommand('italic');
+  document.getElementById('checkBtn').onclick=()=>document.execCommand('insertText',false,'☐ ');
+  document.getElementById('photoInput').onchange=uploadImages;
+  body.addEventListener('paste',e=>{
+    const items=[...(e.clipboardData?.items||[])];
+    const image=items.find(i=>i.type.startsWith('image/'));
+    if(image){e.preventDefault();uploadBlob(image.getAsFile());}
+  });
+  setTimeout(()=>document.getElementById('titleInput').focus(),50);
+}
+
+function createNote(){
+  currentNote={id:null,title:'',content:'',pinned:false,images:[],createdAt:new Date(),updatedAt:new Date()};
+  editorHTML(currentNote);
+}
+function openNote(id){
+  const n=notes.find(x=>x.id===id); if(!n)return;
+  currentNote=JSON.parse(JSON.stringify(n));
+  editorHTML(currentNote);
+}
+function closeEditor(){
+  clearTimeout(saveTimer);
+  saveNow().finally(()=>{currentNote=null;renderList()});
+}
+async function saveNow(){
+  if(!currentNote||!user)return;
+  const title=document.getElementById('titleInput')?.value ?? currentNote.title;
+  const content=document.getElementById('bodyEditor')?.innerHTML ?? currentNote.content;
+  currentNote.title=title;currentNote.content=content;
+  const data={title,content,pinned:!!currentNote.pinned,images:currentNote.images||[],updatedAt:serverTimestamp()};
+  try{
+    document.getElementById('saveState').textContent='저장 중…';
+    if(currentNote.id){
+      await updateDoc(doc(db,'notes',currentNote.id),data);
+    }else{
+      data.createdAt=serverTimestamp();data.ownerId=user.uid;
+      const ref=await addDoc(collection(db,'notes'),data);currentNote.id=ref.id;
+    }
+    document.getElementById('saveState').textContent='저장됨';
+  }catch(e){console.error(e);toast('저장에 실패했어요');}
+}
+function scheduleSave(){
+  const s=document.getElementById('saveState');if(s)s.textContent='작성 중…';
+  clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,650);
+}
+async function togglePin(){
+  currentNote.pinned=!currentNote.pinned;
+  document.getElementById('pinBtn').textContent=currentNote.pinned?'📌':'📍';
+  await saveNow();
+}
+async function removeCurrent(){
+  if(!currentNote)return;
+  if(!confirm('이 메모를 삭제할까요?'))return;
+  clearTimeout(saveTimer);
+  if(currentNote.id)await deleteDoc(doc(db,'notes',currentNote.id));
+  currentNote=null;renderList();
+}
+async function uploadBlob(file){
+  if(!file)return;
+  if(!file.type.startsWith('image/'))return;
+  setLoading(true);
+  try{
+    const fd=new FormData();fd.append('file',file);fd.append('upload_preset',CLOUDINARY_PRESET);fd.append('folder','memo');
+    const res=await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,{method:'POST',body:fd});
+    if(!res.ok)throw new Error(await res.text());
+    const data=await res.json();
+    const body=document.getElementById('bodyEditor');
+    body.focus();
+    document.execCommand('insertHTML',false,`<img src="${data.secure_url}" alt="사진" loading="lazy"><br>`);
+    currentNote.images=[...(currentNote.images||[]),data.secure_url];
+    scheduleSave();
+  }catch(e){console.error(e);toast('사진 업로드에 실패했어요');}
+  finally{setLoading(false)}
+}
+async function uploadImages(e){
+  const files=[...e.target.files];e.target.value='';
+  for(const f of files)await uploadBlob(f);
+}
+
+onAuthStateChanged(auth, u=>{
+  if(!u)return;
+  user=u;
+  if(unsubscribe)unsubscribe();
+  const q=query(collection(db,'notes'),where('ownerId','==',u.uid),orderBy('updatedAt','desc'));
+  unsubscribe=onSnapshot(q,snap=>{
+    notes=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!currentNote)renderList();
+  },err=>{
+    console.error(err);toast('메모를 불러오지 못했어요');
+  });
+});
+setLoading(true);
+signInAnonymously(auth).then(()=>setLoading(false)).catch(e=>{console.error(e);setLoading(false);toast('Firebase 로그인을 확인해주세요')});
+</script>
+</body>
+</html>

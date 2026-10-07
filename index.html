@@ -92,6 +92,7 @@ let saveTimer = null;
 let searchTerm = '';
 let selectionMode = false;
 let selectedIds = new Set();
+let editorOpen = false;
 
 const appEl = document.getElementById('app');
 const loading = document.getElementById('loading');
@@ -248,17 +249,19 @@ function editorHTML(n){
 }
 
 function createNote(){
+  editorOpen=true;
   currentNote={id:null,title:'',content:'',pinned:false,images:[],folderId:currentFolderId==='all'?null:currentFolderId,createdAt:new Date(),updatedAt:new Date()};
   editorHTML(currentNote);
 }
 function openNote(id){
+  editorOpen=true;
   const n=notes.find(x=>x.id===id); if(!n)return;
   currentNote=JSON.parse(JSON.stringify(n));
   editorHTML(currentNote);
 }
 function closeEditor(){
   clearTimeout(saveTimer);
-  saveNow().finally(()=>{currentNote=null;renderList()});
+  saveNow().finally(()=>{currentNote=null;editorOpen=false;renderList()});
 }
 async function saveNow(){
   if(!currentNote)return;
@@ -296,7 +299,7 @@ async function removeCurrent(){
   if(!confirm('이 메모를 삭제할까요?'))return;
   clearTimeout(saveTimer);
   if(currentNote.id)await deleteDoc(doc(db,'notes',currentNote.id));
-  currentNote=null;renderList();
+  currentNote=null;editorOpen=false;renderList();
 }
 async function uploadBlob(file){
   if(!file)return;
@@ -324,7 +327,7 @@ setLoading(false);
 
 onSnapshot(query(collection(db,'notes'),orderBy('updatedAt','desc')),snap=>{
   notes=snap.docs.map(d=>({id:d.id,...d.data()}));
-  if(!currentNote) renderList();
+  if(!editorOpen) renderList();
 },err=>{
   console.error('notes listener:',err);
   toast('메모 목록을 불러오지 못했어요');

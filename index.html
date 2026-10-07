@@ -42,7 +42,7 @@ button{border:0;background:none;color:inherit}
 .body-editor:empty:before{content:attr(data-placeholder);color:#aaa}
 .body-editor img{display:block;max-width:100%;height:auto;border-radius:10px;margin:12px 0;user-select:none;-webkit-user-drag:none}
 .body-editor div{min-height:1.65em}
-.toolbar{position:absolute;left:0;right:0;bottom:0;padding:8px 12px calc(env(safe-area-inset-bottom) + 8px);background:#f8f8f8eF;border-top:1px solid #ddd;display:flex;align-items:center;gap:6px;z-index:5;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
+.toolbar{position:fixed;left:0;right:0;bottom:0;padding:8px 12px calc(env(safe-area-inset-bottom) + 8px);background:#f8f8f8eF;border-top:1px solid #ddd;display:flex;align-items:center;gap:6px;z-index:50;backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);transform:translateY(0);will-change:transform}
 .toolbar button,.file-label{width:44px;height:40px;border:0;border-radius:10px;background:transparent;display:grid;place-items:center;color:#333;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .toolbar button:active,.file-label:active{background:#ddd}
 .toolbar svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}

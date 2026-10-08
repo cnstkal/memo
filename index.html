@@ -102,6 +102,12 @@ input,textarea,select{color:inherit}
 [data-theme=dark] .spinner{border-color:#444;border-top-color:#4da3ff}
 [data-theme=dark] .toast{background:#3a3a3c}
 @media (min-width:700px){[data-theme=dark] body{background:#000}[data-theme=dark] .screen{background:#000}}
+.top h1{white-space:nowrap}
+.top h1 .cnt{font-size:20px;font-weight:500;letter-spacing:0;color:#888;margin-left:6px}
+.body-editor{font-size:var(--fs,17px)!important}
+.card-title{font-size:var(--fs,17px)!important}
+.card-body{font-size:calc(var(--fs,17px) - 2px)!important}
+#fontBtn{font-size:17px;font-weight:700}
 .screen.trash{background:#fff1ef}
 .screen.trash .top h1{color:#d93025}
 .screen.trash .folder-current{color:#d93025;font-weight:600}
@@ -155,6 +161,16 @@ function applyTheme(t){
   document.querySelector('meta[name=theme-color]')?.setAttribute('content',t==='dark'?'#000000':'#f8f8fa');
 }
 applyTheme(getTheme());
+/* 글자 크기 */
+const FONT_STEPS=[[15,'작게'],[17,'보통'],[19,'크게'],[22,'아주 크게'],[26,'최대']];
+function getFontIdx(){let i=1;try{const v=localStorage.getItem('memoFont');if(v!==null&&FONT_STEPS[+v])i=+v}catch{}return i}
+function applyFont(i){document.documentElement.style.setProperty('--fs',FONT_STEPS[i][0]+'px')}
+applyFont(getFontIdx());
+function cycleFont(){
+  const i=(getFontIdx()+1)%FONT_STEPS.length;
+  try{localStorage.setItem('memoFont',String(i))}catch{}
+  applyFont(i);toast('글자 크기: '+FONT_STEPS[i][1]);
+}
 const appEl=document.getElementById('app');
 const loading=document.getElementById('loading');
 const toastEl=document.getElementById('toast');
@@ -323,7 +339,7 @@ function renderList(){
   appEl.innerHTML=`
   <main class="screen${trashMode?' trash':''}">
     <header class="top">
-      <div><h1>${trashMode?'🗑 휴지통':'메모'}</h1><div class="folder-current">${esc(folderLabel)}</div></div>
+      <div><h1>${trashMode?'🗑 휴지통':'메모'}<span class="cnt">(${notes.filter(n=>trashMode?!!n.deletedAt:!n.deletedAt).length})</span></h1><div class="folder-current">${esc(folderLabel)}</div></div>
       <div class="top-actions">
         <button type="button" class="text-action" id="themeBtn" aria-label="다크 모드">${document.documentElement.dataset.theme==='dark'?'☀️':'🌙'}</button>
         <button type="button" class="text-action" id="trashBtn">${trashMode?'목록':'휴지통'}</button>
@@ -356,6 +372,7 @@ appEl.addEventListener('click',e=>{
     applyTheme(t);try{localStorage.setItem('memoTheme',t)}catch{}
     renderList();return;
   }
+  if(id==='fontBtn'){cycleFont();return}
   if(id==='newBtn'||id==='fab'){createNote();return}
   if(id==='selectBtn'){selectionMode=!selectionMode;selectedIds.clear();renderList();return}
   if(id==='trashBtn'){listScroll=0;trashMode=!trashMode;selectionMode=trashMode;selectedIds.clear();searchTerm='';renderList();return}
@@ -389,6 +406,7 @@ function editorHTML(n){
       <button class="back" id="backBtn">‹ 메모</button>
       <div class="save-state" id="saveState">저장됨</div>
       <div class="editor-actions">
+        <button id="fontBtn" title="글자 크기">가</button>
         <button id="pinBtn" title="고정">${n.pinned?'📌':'📍'}</button>
         <button id="deleteBtn" title="삭제">🗑</button>
       </div>

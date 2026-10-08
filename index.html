@@ -718,28 +718,112 @@ function insertPlainText(text){
   let ok=false;
   try{ok=document.execCommand('insertHTML',false,html)}catch{}
   if(!ok)try{ok=document.execCommand('insertText',false,text)}catch{}
+  // 커서 위치를 바로 갱신 (selectionchange는 비동기라, 안 하면 다음 사진이 글자 '앞'에 들어감)
+  const s=getSelection();
+  if(s.rangeCount&&body.contains(s.anchorNode))savedRange=s.getRangeAt(0).cloneRange();
 }
 function parseHtmlClip(html){
-  // 이미지가 섞인 HTML을 [글자, 이미지, 글자…] 순서로 풀어냄
+  // 이미지가 섞인 HTML을 [글자, 이미지, 글자…] 순서로 풀어냄 (빈 줄도 유지)
   const d=new DOMParser().parseFromString(html,'text/html');
   const parts=[];let buf='';
-  const flush=()=>{if(buf.trim())parts.push({t:buf.replace(/^\n+|\n+$/g,'')});buf=''};
+  const flush=()=>{
+    if(buf)parts.push({t:buf.replace(/\n$/,'')});   // 블록 끝의 줄바꿈 하나만 제거
+    buf='';
+  };
   const block=/^(P|DIV|LI|TR|H[1-6]|BLOCKQUOTE|PRE|UL|OL|TABLE|SECTION|ARTICLE|FIGURE)$/;
   (function walk(n){
     for(const c of n.childNodes){
-      if(c.nodeType===3)buf+=c.nodeValue.replace(/\s+/g,' ');
-      else if(c.nodeType===1){
+      if(c.nodeType===3){
+        const t=c.nodeValue.replace(/\s+/g,' ');
+        if(t===' '&&(!buf||buf.endsWith('\n')))continue;   // 태그 사이 공백 무시
+        buf+=t;
+      }else if(c.nodeType===1){
         const tag=c.tagName;
         if(tag==='STYLE'||tag==='SCRIPT'||tag==='META')continue;
-        if(tag==='IMG'){flush();const src=c.getAttribute('src');if(src)parts.push({img:src});continue}
+        if(tag==='IMG'){
+          flush();const src=c.getAttribute('src');
+          if(src)parts.push({img:src,small:c.hasAttribute('class')?c.classList.contains('small'):true});
+          continue;
+        }
         if(tag==='BR'){buf+='\n';continue}
+        const isBlock=block.test(tag);
+        if(isBlock&&buf&&!buf.endsWith('\n'))buf+='\n';   // 맨 앞 글자 뒤에 블록이 와도 줄이 합쳐지지 않게
         walk(c);
-        if(block.test(tag))buf+='\n';
+        if(isBlock&&buf&&!buf.endsWith('\n'))buf+='\n';
       }
     }
   })(d.body);
   flush();
-  return parts;
+  return parts.filter(p=>p.img||p.t!==undefined);
+}
+function lineHasContent(node){
+  if(node.querySelector&&node.querySelector('img'))return true;
+  return !!(node.textContent||'').replace(/[​\s]/g,'');
+}
+// 줄(div) 묶음을 커서 위치에 순서대로 한 번에 넣음
+function insertBlocks(blocks){
+  const body=document.getElementById('bodyEditor');if(!body||!blocks.length)return;
+  body.focus();
+  const sel=getSelection();
+  let r=null;
+  if(sel.rangeCount&&body.contains(sel.anchorNode))r=sel.getRangeAt(0);
+  else if(savedRange&&body.contains(savedRange.startContainer))r=savedRange.cloneRange();
+  if(!r){r=document.createRange();r.selectNodeContents(body);r.collapse(false)}
+  if(!r.collapsed)r.deleteContents();
+  const sc=r.startContainer,so=r.startOffset;
+  let ref=null;
+  if(sc===body){ref=body.childNodes[so]||null}
+  else{
+    let line=sc;while(line.parentNode!==body)line=line.parentNode;
+    if(line.nodeType!==1){const w=document.createElement('div');body.insertBefore(w,line);w.appendChild(line);line=w}
+    const pre=document.createRange();pre.setStart(line,0);pre.setEnd(sc,so);
+    const post=document.createRange();post.setStart(sc,so);post.setEnd(line,line.childNodes.length);
+    const hasPre=lineHasContent(pre.cloneContents()),hasPost=lineHasContent(post.cloneContents());
+    if(!hasPre&&!hasPost){ref=line.nextSibling;line.remove()}      // 빈 줄이면 그 자리를 대체
+    else if(!hasPre){ref=line}                                      // 줄 맨 앞
+    else if(!hasPost){ref=line.nextSibling}                         // 줄 맨 뒤
+    else{const d=document.createElement('div');d.appendChild(post.extractContents());ref=line.nextSibling;body.insertBefore(d,ref);ref=d}
+  }
+  blocks.forEach(b=>body.insertBefore(b,ref));
+  const last=blocks[blocks.length-1];
+  let cur=last;
+  if(last.querySelector('img')){        // 사진으로 끝나면 아래에 글 쓸 빈 줄 확보
+    const nx=last.nextSibling;
+    if(nx&&nx.nodeType===1&&nx.tagName==='DIV'&&!lineHasContent(nx))cur=nx;
+    else{const d=document.createElement('div');d.innerHTML='<br>';body.insertBefore(d,nx);cur=d}
+  }
+  const nr=document.createRange();
+  if(cur.lastChild&&cur.lastChild.nodeType===3)nr.setStart(cur.lastChild,cur.lastChild.length);else nr.setStart(cur,0);
+  nr.collapse(true);
+  sel.removeAllRanges();sel.addRange(nr);savedRange=nr.cloneRange();
+  normalizeLines(body);
+  try{cur.scrollIntoView({block:'nearest'})}catch{}
+}
+// [글자, 사진, 글자…] 를 원래 순서/줄 그대로 붙여넣기 (연속된 사진은 한 줄에 같이)
+function insertParts(parts){
+  const noteId=currentNote?.id;
+  const blocks=[],pending=[];
+  let imgBlock=null;
+  for(const p of parts){
+    if(p.img){
+      if(!imgBlock){imgBlock=document.createElement('div');blocks.push(imgBlock)}
+      const im=document.createElement('img');
+      im.src=p.img;im.alt='사진';im.setAttribute('data-uploading','1');
+      if(p.small!==false)im.classList.add('small');
+      imgBlock.appendChild(im);pending.push([im,p.img]);
+    }else{
+      imgBlock=null;
+      p.t.replace(/\r\n?/g,'\n').split('\n').forEach(l=>{
+        const d=document.createElement('div');
+        l=l.replace(/^ +| +$/g,'');
+        if(l)d.textContent=l;else d.innerHTML='<br>';
+        blocks.push(d);
+      });
+    }
+  }
+  insertBlocks(blocks);
+  scheduleSave();
+  pending.forEach(([im,src])=>processImage(im,src,noteId));
 }
 function handlePaste(e){
   const cd=e.clipboardData;if(!cd)return;
@@ -755,10 +839,7 @@ function handlePaste(e){
   }
   if(html&&/<img[\s>]/i.test(html)){
     const parts=parseHtmlClip(html);
-    if(parts.some(p=>p.img)){
-      parts.forEach(p=>{if(p.img)uploadRemote(p.img);else insertPlainText(p.t)});
-      return;
-    }
+    if(parts.some(p=>p.img)){insertParts(parts);return}
   }
   insertPlainText(text);
 }

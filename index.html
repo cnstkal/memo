@@ -144,7 +144,7 @@ const db=getFirestore(app);
 let notes=[],folders=[];
 let currentFolderId='all',currentNote=null,saveTimer=null,searchTerm='';
 let selectionMode=false,selectedIds=new Set(),editorOpen=false,trashMode=false;
-let savedRange=null,menuImg=null;
+let savedRange=null,menuImg=null,listScroll=0;
 
 function getTheme(){
   let t=null;try{t=localStorage.getItem('memoTheme')}catch{}
@@ -197,7 +197,7 @@ async function createFolder(){
   try{
     const ref=doc(collection(db,'folders'));
     folders.push({id:ref.id,name:name.trim(),createdAt:new Date()});
-    currentFolderId=ref.id;renderList();
+    listScroll=0;currentFolderId=ref.id;renderList();
     await setDoc(ref,{name:name.trim(),createdAt:serverTimestamp()});
   }catch(e){console.error(e);toast('폴더를 만들지 못했어요')}
 }
@@ -209,7 +209,7 @@ async function deleteFolder(id){
     const targets=notes.filter(n=>n.folderId===id);
     targets.forEach(n=>n.folderId=null);
     folders=folders.filter(x=>x.id!==id);
-    currentFolderId='all';renderList();
+    listScroll=0;currentFolderId='all';renderList();
     await Promise.all(targets.map(n=>setDoc(doc(db,'notes',n.id),{folderId:null,updatedAt:serverTimestamp()},{merge:true})));
     await deleteDoc(doc(db,'folders',id));
   }catch(e){console.error(e);toast('폴더를 삭제하지 못했어요')}
@@ -317,6 +317,8 @@ function renderNotesOnly(){
 }
 function renderList(){
   appEl.style.height='';
+  const oldNotes=document.getElementById('notesSection');
+  if(oldNotes)listScroll=oldNotes.scrollTop;   // 다시 그려도 보던 위치 기억
   const folderLabel=trashMode?'삭제된 메모':(currentFolderId==='all'?'모든 메모':folderName(currentFolderId));
   appEl.innerHTML=`
   <main class="screen${trashMode?' trash':''}">
@@ -340,6 +342,8 @@ function renderList(){
     <section class="notes" id="notesSection">${cardsHTML()}</section>
     ${selectionMode||trashMode?'':`<button type="button" class="fab" id="fab" aria-label="새 메모"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>`}
   </main>`;
+  const ns=document.getElementById('notesSection');
+  if(ns)ns.scrollTop=listScroll;
 }
 
 /* 이벤트는 한 번만 연결 (위임) */
@@ -354,7 +358,7 @@ appEl.addEventListener('click',e=>{
   }
   if(id==='newBtn'||id==='fab'){createNote();return}
   if(id==='selectBtn'){selectionMode=!selectionMode;selectedIds.clear();renderList();return}
-  if(id==='trashBtn'){trashMode=!trashMode;selectionMode=trashMode;selectedIds.clear();searchTerm='';renderList();return}
+  if(id==='trashBtn'){listScroll=0;trashMode=!trashMode;selectionMode=trashMode;selectedIds.clear();searchTerm='';renderList();return}
   if(id==='addFolderBtn'){createFolder();return}
   if(id==='deleteFolderBtn'){deleteFolder(currentFolderId);return}
   if(id==='moveBtn'){bulkMove();return}
@@ -369,7 +373,7 @@ appEl.addEventListener('click',e=>{
   }
 });
 appEl.addEventListener('change',e=>{
-  if(e.target.id==='folderSelect'){currentFolderId=e.target.value;selectedIds.clear();renderList()}
+  if(e.target.id==='folderSelect'){listScroll=0;currentFolderId=e.target.value;selectedIds.clear();renderList()}
 });
 appEl.addEventListener('input',e=>{
   if(e.target.id==='searchInput'){searchTerm=e.target.value;renderNotesOnly()}
@@ -377,6 +381,8 @@ appEl.addEventListener('input',e=>{
 
 /* ---------- 에디터 ---------- */
 function editorHTML(n){
+  const listEl=document.getElementById('notesSection');
+  if(listEl)listScroll=listEl.scrollTop;   // 목록 스크롤 위치 저장
   appEl.innerHTML=`
   <main class="screen editor">
     <header class="editor-top">
@@ -396,6 +402,7 @@ function editorHTML(n){
       <button id="italicBtn" aria-label="기울임"><svg viewBox="0 0 24 24"><path d="M10 5h8v3h-2.4l-3.2 8H15v3H7v-3h2.4l3.2-8H10V5Z"/></svg></button>
       <button id="checkBtn" aria-label="체크리스트"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 2.5 2.5L16 9"/></svg></button>
       <label class="file-label" aria-label="사진 추가"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 17 4.5-4.5 3.5 3 2.5-2.5 3.5 4"/></svg><input id="photoInput" type="file" accept="image/*" multiple></label>
+      <button id="newNoteBtn" aria-label="새 메모" style="margin-left:auto"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
     </nav>
   </main>`;
   savedRange=null;
@@ -417,6 +424,13 @@ function editorHTML(n){
   $('italicBtn').onclick=()=>{body.focus();document.execCommand('italic')};
   $('checkBtn').onclick=()=>{body.focus();restoreRange();document.execCommand('insertText',false,'☐ ')};
   $('photoInput').onchange=uploadImages;
+  // + : 지금 메모 저장하고 바로 새 메모 열기 (키보드 유지)
+  $('newNoteBtn').onclick=()=>{
+    clearTimeout(saveTimer);
+    try{hideImgMenu();saveNow()}catch(err){console.error(err)}
+    createNote();
+    document.getElementById('bodyEditor')?.focus();
+  };
   body.addEventListener('paste',handlePaste);
   setupImageLongPress(body);
   if(!n.id||n.isNew)setTimeout(()=>$('bodyEditor')?.focus(),50);
@@ -859,6 +873,8 @@ function openNote(id){
   if(t&&firstLine(content)!==t)content=`<div>${esc(t)}</div>`+content;   // 예전 제목은 첫 줄로 옮김
   currentNote={id:n.id,isNew:false,title:n.title||'',content,pinned:!!n.pinned,images:n.images||[],folderId:n.folderId||null};
   editorHTML(currentNote);
+  // 열었을 때의 내용을 기억해 두고, 안 바꿨으면 저장(=수정시간 갱신=목록 순서 변경)을 하지 않음
+  try{const c=cleanContent();currentNote.baseHtml=c.html;currentNote.baseFolder=currentNote.folderId||null;currentNote.basePinned=!!currentNote.pinned}catch{}
 }
 function closeEditor(){
   clearTimeout(saveTimer);
@@ -881,6 +897,11 @@ function saveNow(){
   if(!n||!bodyEl)return Promise.resolve();
   clearTimeout(saveTimer);
   const{html,images}=cleanContent();const title=firstLine(html);
+  if(!n.isNew&&n.baseHtml===html&&(n.folderId||null)===n.baseFolder&&!!n.pinned===n.basePinned){
+    const st0=document.getElementById('saveState');if(st0)st0.textContent='저장됨';
+    return Promise.resolve();   // 안 바뀐 메모는 저장하지 않음
+  }
+  n.baseHtml=html;n.baseFolder=n.folderId||null;n.basePinned=!!n.pinned;
   n.title=title;n.content=html;n.images=images;
   const pendingImgs=bodyEl.querySelectorAll('img[data-uploading]').length;   // 업로드 중인 사진이 있으면 빈 메모여도 저장
   if(n.isNew&&!title.trim()&&!plainText(html)&&!images.length&&!pendingImgs)return Promise.resolve(); // 빈 새 메모는 저장 안 함
